@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/mdepub-core", "crates/mdepub-cli"]
+members = [
+    "crates/trans-epub-contract",
+    "crates/trans-epub-core",
+    "crates/trans-epub-cli",
+]
 
 [workspace.package]
 version = "0.1.0"

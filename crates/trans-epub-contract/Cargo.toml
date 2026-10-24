@@ -1,0 +1,17 @@
+[package]
+name = "trans-epub-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+# 测试工具模块（MemVfs / MockFetcher）：各 crate 的 dev-dependencies 打开
+test-util = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+url = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+toml = "0.8"

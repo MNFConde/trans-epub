@@ -1,0 +1,63 @@
+/* trans-epub base.css —— 中性亮色排版基线（docs/architecture/50-writer.md）
+ * 版本随 crate 走；用户叠加走 extra.css（追加在内置主题之后）。 */
+
+html { line-height: 1.6; }
+body { margin: 0.4em 0.9em; font-family: serif; color: #1f2328; }
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: sans-serif;
+  line-height: 1.25;
+  margin: 1.4em 0 0.6em;
+  text-align: left;
+}
+h1 { font-size: 1.6em; border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; }
+h2 { font-size: 1.35em; border-bottom: 1px solid #eaeef2; padding-bottom: 0.2em; }
+h3 { font-size: 1.15em; }
+h4, h5, h6 { font-size: 1em; }
+
+p { margin: 0.6em 0; }
+a { color: #0969da; text-decoration: none; }
+img { max-width: 100%; }
+
+blockquote {
+  margin: 0.8em 1em;
+  padding: 0.1em 1em;
+  border-left: 0.3em solid #d0d7de;
+  color: #57606a;
+}
+
+table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  max-width: 100%;
+  font-size: 0.92em;
+}
+th, td { border: 1px solid #d0d7de; padding: 0.35em 0.7em; }
+th { background: #f6f8fa; }
+
+code {
+  font-family: monospace;
+  font-size: 0.9em;
+  background: #f6f8fa;
+  padding: 0.12em 0.3em;
+  border-radius: 3px;
+}
+
+hr { border: 0; border-top: 1px solid #d0d7de; margin: 1.5em 0; }
+ul, ol { padding-left: 1.5em; }
+li.task-list-item { list-style: none; }
+
+.footnotes { font-size: 0.9em; color: #57606a; }
+.footnotes h2 { font-size: 1.1em; }
+
+@media (prefers-color-scheme: dark) {
+  body { color: #e6edf3; }
+  a { color: #58a6ff; }
+  h1 { border-bottom-color: #30363d; }
+  h2 { border-bottom-color: #21262d; }
+  blockquote { border-left-color: #30363d; color: #8b949e; }
+  th, td { border-color: #30363d; }
+  th { background: #161b22; }
+  code { background: #161b22; }
+  hr { border-top-color: #30363d; }
+}

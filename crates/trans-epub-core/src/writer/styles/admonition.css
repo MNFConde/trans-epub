@@ -1,0 +1,35 @@
+/* trans-epub admonition.css —— GitHub 风格提示色块
+ * 消费 comrak alerts（AlertStyleType::Semantic）的输出：
+ *   <aside class="admonition note"><p class="admonition-title">Note</p>… */
+
+aside.admonition {
+  margin: 1em 0;
+  padding: 0.55em 1em;
+  border-left: 0.35em solid;
+  border-radius: 4px;
+  font-family: sans-serif;
+  font-size: 0.95em;
+}
+.admonition-title { font-weight: bold; margin: 0 0 0.3em; }
+aside.admonition > p:last-child,
+aside.admonition > ul:last-child,
+aside.admonition > ol:last-child { margin-bottom: 0; }
+
+.admonition.note     { border-color: #0969da; background: #ddf4ff; }
+.admonition.note     .admonition-title { color: #0969da; }
+.admonition.tip      { border-color: #1a7f37; background: #dafbe1; }
+.admonition.tip      .admonition-title { color: #1a7f37; }
+.admonition.important{ border-color: #8250df; background: #fbefff; }
+.admonition.important .admonition-title { color: #8250df; }
+.admonition.warning  { border-color: #9a6700; background: #fff8c5; }
+.admonition.warning  .admonition-title { color: #9a6700; }
+.admonition.caution  { border-color: #cf222e; background: #ffebe9; }
+.admonition.caution  .admonition-title { color: #cf222e; }
+
+@media (prefers-color-scheme: dark) {
+  .admonition.note     { background: #121d2f; }
+  .admonition.tip      { background: #12261e; }
+  .admonition.important{ background: #21182d; }
+  .admonition.warning  { background: #272115; }
+  .admonition.caution  { background: #2d1517; }
+}
