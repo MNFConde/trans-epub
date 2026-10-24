@@ -1,0 +1,12 @@
+[package]
+name = "mdepub-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mdepub-core = { path = "../mdepub-core" }
+
+[[bin]]
+name = "mdepub"
+path = "src/main.rs"
