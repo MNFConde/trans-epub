@@ -1,7 +1,7 @@
 ---
 type: docs
 status: active
-summary: "docs/ 顶层文档地图：按稳定度分组（上游需求调研/规范架构/论证 ADR/操作测试），三列索引（文档|职责|何时读）与引用规范"
+summary: "docs/ 顶层文档地图：按稳定度分组（用户手册/上游需求调研/规范架构/论证 ADR/操作测试），三列索引（文档|职责|何时读）与引用规范"
 tags: [trans-epub, docs, map]
 contains: [checklist]
 created: 2026-10-25
@@ -23,6 +23,14 @@ trans-epub 项目文档索引。所有文档为规划稿，随实现推进持续
 | [requirements.md](requirements.md) | 需求基线 v1.0：目标、非目标、验收口径 | 一切的起点 |
 | [research/ecosystem.md](research/ecosystem.md) | 生态调研：md/文档站 → EPUB 工具竞品与坑位 | 选型/遇到生态问题时 |
 
+### 用户（怎么用）
+
+| 文档 | 职责 | 何时读 |
+|---|---|---|
+| [guide/README.md](guide/README.md) | 用户手册入口：三分钟上手、页面目录 | 第一次使用 trans-epub 时 |
+| [guide/install.md](guide/install.md) | 安装：Releases 二进制 / cargo / 源码构建 | 装环境时 |
+| [guide/cli.md](guide/cli.md) | 命令参考：两族命令、全部旗标（含默认值）、预设选择器链、退出码、配置文件（旗标全表单一事实源） | 查旗标用法时 |
+
 ### 规范（是什么）
 
 | 文档 | 职责 | 何时读 |
@@ -39,7 +47,7 @@ trans-epub 项目文档索引。所有文档为规划稿，随实现推进持续
 
 | 文档 | 职责 | 何时读 |
 |---|---|---|
-| [adr/](adr/README.md) | 决策记录 11 篇（0001-0011）+ 索引：背景/决策/依据/影响 | 遇到"为什么这么选"时 |
+| [adr/](adr/README.md) | 决策记录 13 篇（0001-0013）+ 索引：背景/决策/依据/影响 | 遇到"为什么这么选"时 |
 
 ### 操作（怎么落地）
 

@@ -28,39 +28,15 @@ authoring_mode: ai_generated
 
 ## 命令面（路径族与采集族均已实现）
 
-```text
-# 路径族：散装 md（MVP1）/ mdBook 项目（MVP2）
-trans-epub <PATH> [-o out.epub] [--dry-run]
+两族命令：`trans-epub <PATH> [通用旗标]`（散装 md / mdBook 项目）与 `trans-epub crawl <start-url | sitemap.xml | list.txt> [采集旗标] [通用旗标]`（采集）。**用户视角的完整旗标参考——含默认值、四预设选择器链、退出码表、TOML 配置示例——单一事实源在 [../guide/cli.md](../guide/cli.md)**，本节只留架构侧约束：
 
-# 采集族（MVP3）
-trans-epub crawl <start-url | sitemap.xml | list.txt> [采集旗标] [通用旗标]
-    --depth 3 --max-pages 500       # BFS 深度与页面数安全帽
-    --include GLOB --exclude GLOB   # URL path 过滤（可重复）
-    --rate-ms 1000                  # 每 host 最小请求间隔
-    --ignore-robots                 # 关闭 robots 遵守（自负其责）
-    --preset mkdocs|docusaurus|vitepress|gitbook   # 正文抽取预设
-
-# 通用覆盖（两族扁平复用，与 ResolvedConfig 字段一一对应，不另造概念）
-    -o, --config/-c, --title --author(可重复) --lang --cover
-    --no-remote-images        # AssetsCfg.remote=false
-    --wrap pre-wrap|hard [--wrap-width 92]
-    --extra-css <FILE>
-    --report text|json [--strict]
-    --dry-run
-    -q, --quiet               # 静默（进度与文本报告）
-```
-
-crawl 输入判别：http(s) URL 且 path 以 `.xml` 结尾 → 远程 sitemap；其他 http(s) URL → BFS 起始页；本地文件按扩展名分本地 sitemap / URL 列表（`#` 注释、一行一 URL）。`--dry-run` 语义两族不同：路径族跑 probe 打 Outline；crawl 在**发现完成后**打印有序 URL 清单即停（BFS 发现本身需要抓页面）。`--preset` 直接写 `WebCfg.preset`。
-
-参数面与 `ResolvedConfig` 字段一一对应是刻意约束：CLI 不暴露任何过程性开关（"跳过某 pass"之类），扩展行为走配置语义而非命令行特例。
+- 通用旗标与 `ResolvedConfig` 字段一一对应是刻意约束：CLI 不暴露任何过程性开关（"跳过某 pass"之类），扩展行为走配置语义而非命令行特例。
+- crawl 输入判别（远程 sitemap / BFS 起始页 / 本地 sitemap / URL 列表）在壳层 `dispatch_discovery` 完成，判别结果决定 fetch crate 的发现入口。
+- `--dry-run` 语义两族不同：路径族跑 probe 打 Outline；crawl 在**发现完成后**打印有序 URL 清单即停（BFS 发现本身需要抓页面）。`--preset` 直接写 `WebCfg.preset`。
 
 ## 退出码
 
-| 码 | 含义 |
-|---|---|
-| 0 | 成功（允许有 warning；`--strict` 下 warning 也非零） |
-| 1 | 转换致命失败（BuildError）或 `--strict` 下的 warning |
-| 2 | 用法/环境错误（参数不合法、路径不存在、无前端可识别） |
+0 成功（`--strict` 下 warning 也非零）/ 1 转换致命失败（BuildError）或 `--strict` 下的 warning / 2 用法环境错误（参数不合法、路径不存在、无前端可识别）。完整表见 [../guide/cli.md](../guide/cli.md#退出码)（单一事实源）；服务与 CI 以退出码驱动 `--report json` 的消费流程。
 
 ## 服务化对照（三期）
 

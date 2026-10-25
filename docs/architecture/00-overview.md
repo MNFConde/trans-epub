@@ -145,5 +145,6 @@ core 从第一天按服务友好的姿势写。服务化 = 换壳，core/fetch/c
 - ✅ 2026-10-24：**MVP1 主线落地**——md 前端（六规则探测 + comrak 方言 + heading id + 资产登记）、pipeline 四 pass（asset-resolve / link-rewrite 含锚点校验 / highlight / code-wrap）、converter 门面、epub3 writer（确定性 zip + CSS 主题亮暗两套）、CLI 最小闭环（配置合并 / dry-run / 报告 / 退出码 / 内置 Fetcher）、质量设施（contract test-util mock、3 本 golden 样书字节级回归、epubcheck 门全绿、真机抽验清单）。验收口径达成：epubcheck 5.2.1 对三本 golden **零错误零警告**。
 - ✅ 2026-10-25：MVP1 真机抽验通过（Readest / SumatraPDF）；MVP2 mdBook 前端落地（SUMMARY 自解析不拍平 + 指令展开，契约零变更）。
 - ✅ 2026-10-25：**MVP3 落地**——trans-epub-fetch crate（PoliteFetcher + 页面发现三机制）、core web 前端（选择器预设 + language class 存活 + 编码链）、link-rewrite 的 Url 世界解析、CLI crawl 子命令（CLI 内置 Fetcher 已按计划平移进 fetch crate）。golden 第 5 本（web），epubcheck 全绿。
-- crates.io 名称可用性确认（trans-epub 及各 crate 名，需求文档遗留的 Open Question）。
+- ✅ 2026-10-25：发布准备第一波——License 定为 AGPL-3.0-only（[ADR 0012](../adr/0012-license-agpl.md)）、分发定为 GitHub Releases 二进制且 crates.io 暂缓（[ADR 0013](../adr/0013-distribution-github-releases.md)，reqwest TLS 随之从 native-tls 切 rustls+ring，交叉零 C 依赖）、用户手册 `docs/guide/` 与根 README 落地（CLI 旗标全表单一事实源移至 guide/cli.md）。
+- crates.io 名称可用性确认：暂缓非放弃（需求文档遗留的 Open Question，被 [ADR 0013](../adr/0013-distribution-github-releases.md) 替换为 GitHub Releases 分发；上架时按其两条路径另立决策）。
 - 本目录文档与代码同步演进：**契约变更须先改 10-contracts.md 再动代码**，golden 样书随之更新。

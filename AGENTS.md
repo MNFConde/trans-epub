@@ -1,6 +1,6 @@
 # trans-epub 协作规则
 
-trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差异化是"编程文档保真"（构建期语法高亮、代码长行处理、mdBook 语义、链接改写）。当前状态：MVP1（散装 md，a95bd71）、MVP2（mdBook 前端）与 MVP3（fetch 采集库 + web 前端 + CLI crawl）已落地、门禁全绿；下一步发布前收尾（crates.io 名称确认 + Apple Books 真机补验）。
+trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差异化是"编程文档保真"（构建期语法高亮、代码长行处理、mdBook 语义、链接改写）。当前状态：MVP1（散装 md，a95bd71）、MVP2（mdBook 前端）与 MVP3（fetch 采集库 + web 前端 + CLI crawl）已落地、门禁全绿；发布准备进行中——License 定为 AGPL-3.0-only（ADR 0012）、分发定为 GitHub Releases 二进制且 crates.io 暂缓（ADR 0013，TLS 随之切 rustls+ring），用户手册 `docs/guide/` 与根 README 已就位；下一步 Releases 首发（CI 流水线 + 版本基线）与 Apple Books 真机补验。
 
 ## 阅读顺序
 

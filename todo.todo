@@ -62,7 +62,8 @@ trans-epub:
     ✔ 集成测试按契约/行为/红线语义分层重组（ADR 0011：core/fetch/cli 单 binary + mod 挂载对账；顺带修 epubcheck 门假绿）
   发布前:
     ☐ 真机抽验执行（Koodo 主力 + Apple Books / KOReader 各一，清单见 docs/testing/manual-checklist.md）
-    ☐ crates.io 名称可用性确认（trans-epub / -core / -contract / -fetch / -cli）
+    ☐ GitHub Releases 首发准备（CI 交叉构建流水线：tag → 六目标 → 资产上传；版本基线；分发决策见 docs/adr/0013）
+    ☐ crates.io 名称可用性确认（暂缓非放弃——ADR 0013；上架时按其两条路径另立决策）
   二期 · GUI（暂缓）:
     ☐ GUI 框架选型：Tauri 复用 core vs egui 纯 Rust（决策后立 ADR）
     ☐ 结构预览（Outline 勾选剔除）+ 配置 + 出书

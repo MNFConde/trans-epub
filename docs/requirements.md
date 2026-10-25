@@ -95,7 +95,7 @@ SPA/纯客户端渲染站（headless 浏览器）· 登录/付费内容 · Kindl
 
 | 遗留问题 | 去向 |
 |---|---|
-| crates.io 上名称可用性 | todo.todo（发布前确认 trans-epub 系列） |
+| crates.io 上名称可用性 | [【已替换】 ADR 0013：分发改 GitHub Releases 二进制，crates.io 暂缓非放弃](adr/0013-distribution-github-releases.md)（原去向：todo.todo 发布前确认名称） |
 | GUI 框架选型（Tauri 复用 core vs egui 纯 Rust） | 二期开工时决策并立 ADR |
 | 内置文档站预设第一批站点清单与优先级 | MVP3 开工时按实际抓取目标定 |
 | SPA 外置渲染器接缝的具体契约 | MVP3 稳定后设计 |

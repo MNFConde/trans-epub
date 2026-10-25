@@ -53,5 +53,7 @@ authoring_mode: ai_generated
 | [0009](0009-one-shot-stateless-conversion.md) | 一次性全量转换，无缓存无增量 | accepted | 2026-10-10 |
 | [0010](0010-probe-load-split.md) | probe / load 分离 | accepted | 2026-10-24 |
 | [0011](0011-test-organization.md) | 集成测试按契约/行为/红线分层（单 binary） | accepted | 2026-10-25 |
+| [0012](0012-license-agpl.md) | 许可选型：AGPL-3.0-only | accepted | 2026-10-25 |
+| [0013](0013-distribution-github-releases.md) | 分发渠道：GitHub Releases 二进制；crates.io 暂缓 | accepted | 2026-10-25 |
 
 > 0005–0009 定稿于 2026-10-10 需求采访，2026-10-24 拆分时回填为 ADR。
