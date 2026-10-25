@@ -2,13 +2,12 @@
 //! 5xx 禁抓/缓存/开关）、限速节拍、重试与退避、4xx 不重试、大小上限
 //!（40-fetch.md 测试策略清单）。
 
-mod mock_server;
-
 use std::time::{Duration, Instant};
 
-use mock_server::MockServer;
 use trans_epub_contract::source::{FetchError, Fetcher};
 use trans_epub_fetch::{PoliteConfig, PoliteFetcher};
+
+use crate::support::mock_server::MockServer;
 
 fn fast_config() -> PoliteConfig {
     PoliteConfig {

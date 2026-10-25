@@ -3,6 +3,8 @@ name = "trans-epub-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+# tests/ 顶层只留 main.rs；集成测试全走显式 [[test]]（ADR 0011）
+autotests = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -22,3 +24,7 @@ tempfile = "3"
 [[bin]]
 name = "trans-epub"
 path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

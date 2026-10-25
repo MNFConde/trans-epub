@@ -164,6 +164,7 @@ EPUB 内部路径规则（章节文件名 `Text/ch00001.xhtml`、资产按类型
 
 ## 测试策略
 
+- **组织**（ADR 0011）：`tests/` 单 binary 语义分层——`contract/`（golden 字节、确定性、epubcheck 门：锁承诺，改=改承诺）、`behavior/`（md/mdbook/web 结构断言：随产品演进）、`arch/`（依赖方向红线）、`support/`（helper）。跑全部集成测试 `cargo test -p trans-epub-core --test integration`；更新 golden `UPDATE_GOLDEN=1 cargo test -p trans-epub-core --test integration contract::bytes`；新增测试文件必须挂进对应 mod.rs 并对账 `-- --list`（防静默跳过，当前 11 个）。
 - **单测**：pass 用 mock Vfs / mock Fetcher（契约 trait 的内存实现，`trans-epub-contract` 的 `test-util` feature，位于 `contract::testing`）；link-rewrite 的解析/规范化用表驱动用例覆盖边角（含 Url 世界的 join / 同源 / 协议相对表）。
 - **fixtures**（`tests/fixtures/`）：md（平铺+README/数字前缀+GFM 全家桶/断链缺图/嵌套树/front matter order/单文件）；mdbook（3 层嵌套 SUMMARY+part+draft+include 全形态+rustdoc 锚点+hide+缺失目标+hidden 章，MVP2 落地）；web（默认链脏 HTML 边角样书 + 四预设样本页 `web/presets/`，MVP3 落地）。
 - **golden**（`tests/golden/`）：端到端产物**字节级比对**（依赖确定性；`UPDATE_GOLDEN=1` 重新生成并 review diff）；比对失败时 diff 解包后的 XHTML 快照定位。已有 5 本：flat / tree / single / mdbook / web。

@@ -68,5 +68,6 @@ CLI 的每项职责在服务里的对应物见 00-overview.md 的接缝表。要
 
 ## 测试
 
+- 组织（ADR 0011）：`tests/` 单 binary 分 `contract/`（cli_surface——退出码/dry-run/report json 的进程接口契约）与 `e2e/`（convert / crawl——真实产物）；跑法 `cargo test -p trans-epub-cli --test integration`（对账 9 个）。
 - 已落地：lib 单测（参数解析 / 配置合并优先级 / clap 面自检 / crawl 旗标）+ e2e（真实二进制 × fixtures：退出码、产物、dry-run、`--report json` 结构、`--strict`），全程不访问网络。
 - crawl e2e（MVP3 已落地）：测试内起回环迷你 HTTP 服务（两页小站），覆盖 crawl → 发现 → 抓取 → web 前端 → EPUB 的完整链路与 dry-run 清单输出、本地输入缺失的用法错误；与 fetch crate 的 mock 服务设施各自独立、互不依赖。

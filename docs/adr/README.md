@@ -52,5 +52,6 @@ authoring_mode: ai_generated
 | [0008](0008-epub3-only-no-kindle.md) | EPUB3 唯一输出，不做 Kindle 适配 | accepted | 2026-10-10 |
 | [0009](0009-one-shot-stateless-conversion.md) | 一次性全量转换，无缓存无增量 | accepted | 2026-10-10 |
 | [0010](0010-probe-load-split.md) | probe / load 分离 | accepted | 2026-10-24 |
+| [0011](0011-test-organization.md) | 集成测试按契约/行为/红线分层（单 binary） | accepted | 2026-10-25 |
 
 > 0005–0009 定稿于 2026-10-10 需求采访，2026-10-24 拆分时回填为 ADR。

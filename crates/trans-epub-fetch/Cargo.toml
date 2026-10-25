@@ -3,6 +3,8 @@ name = "trans-epub-fetch"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+# tests/ 顶层只留 main.rs；集成测试全走显式 [[test]]（ADR 0011）
+autotests = false
 
 [dependencies]
 globset = "0.4"
@@ -20,3 +22,7 @@ reqwest = { version = "0.13", default-features = false, features = [
 
 [dev-dependencies]
 trans-epub-contract = { path = "../trans-epub-contract", features = ["test-util"] }
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

@@ -69,6 +69,7 @@ trans-epub crawl <start-url | sitemap.xml | list.txt> [--depth N] [--max-pages N
 
 ## 测试（已落地）
 
-- **PoliteFetcher**：本地 mock HTTP 服务（`tests/mock_server.rs`，回环监听）覆盖 robots 允许/禁止/缺失/5xx 禁抓/缓存/开关、限速节拍（时间下界断言）、重试与退避（前 N 次 500）、4xx 不重试、大小上限截断。
+- 组织（ADR 0011）：`tests/` 单 binary 分 `contract/`（polite_http / discover_pages——对上游的承诺）与 `support/`（mock 服务）；跑法 `cargo test -p trans-epub-fetch --test integration`（对账 20 个）。
+- **PoliteFetcher**：本地 mock HTTP 服务（`tests/support/mock_server.rs`，回环监听）覆盖 robots 允许/禁止/缺失/5xx 禁抓/缓存/开关、限速节拍（时间下界断言）、重试与退避（前 N 次 500）、4xx 不重试、大小上限截断。
 - **发现机制**（契约 MockFetcher 离线驱动）：sitemap 标准序 / index 嵌套 / 非标准无 xmlns / 缺失与自引用环、BFS 深度 / include-exclude / 跨域剔除 / 去重 / 页面帽 / 非 HTML 跳过、list 解析与 `fetch_pages` 过滤。
 - 原计划的"三个公开文档站录制 FetchedPage 快照"落地为**预设样本 fixture**（`trans-epub-core/tests/fixtures/web/presets/`，四预设各一）＋ web golden 样书——同口径防外网依赖，且样本可控可 diff；真实站点录制属可选加强，未做。

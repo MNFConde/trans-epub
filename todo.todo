@@ -59,6 +59,7 @@ trans-epub:
       ✔ crawl 子命令（start-url / sitemap / list.txt）
   打磨:
     ✔ 高亮语法集升级：syntect 默认集 → syntect-assets 扩展 dump（TypeScript/TSX/JSX/TOML 补齐，ROADMAP 开放问题 4 关闭）
+    ✔ 集成测试按契约/行为/红线语义分层重组（ADR 0011：core/fetch/cli 单 binary + mod 挂载对账；顺带修 epubcheck 门假绿）
   发布前:
     ☐ 真机抽验执行（Koodo 主力 + Apple Books / KOReader 各一，清单见 docs/testing/manual-checklist.md）
     ☐ crates.io 名称可用性确认（trans-epub / -core / -contract / -fetch / -cli）
