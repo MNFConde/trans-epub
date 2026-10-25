@@ -182,7 +182,10 @@ fn tree_nesting_and_order() {
     // spine：封面页 → README → tips(FM order=0) → notes → guide/README → install → usage
     let opf = utf8("OEBPS/content.opf", &output);
     assert!(opf.contains("properties=\"cover-image\""), "封面图属性");
-    assert!(opf.contains("<meta name=\"cover\" content="), "legacy 封面 meta");
+    assert!(
+        opf.contains("<meta name=\"cover\" content="),
+        "legacy 封面 meta"
+    );
     assert!(
         opf.contains("OEBPS/Text/cover.xhtml") || opf.contains("Text/cover.xhtml"),
         "封面页进 manifest"
