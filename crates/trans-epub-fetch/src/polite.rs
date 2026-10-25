@@ -91,6 +91,9 @@ pub struct PoliteFetcher {
 
 impl PoliteFetcher {
     pub fn new(config: PoliteConfig) -> Self {
+        // rustls-no-provider 模式要求在构造 Client 前安装进程级 crypto provider；
+        // 选 ring（纯 Rust）。Err = 进程里已装过（重复构造），按幂等容忍。
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let client = reqwest::blocking::Client::builder()
             .user_agent(config.user_agent.clone())
             .timeout(config.timeout)

@@ -24,7 +24,7 @@ fetch 是**采集库**：把"礼貌地拿到一批已排序页面"做成可复�
 
 ### 默认 Fetcher 实现（PoliteFetcher）
 
-- reqwest 阻塞客户端（core 同步内核的配套；服务复用时同样跑在 `spawn_blocking` 里）；TLS 走 native-tls（Windows=schannel，免 C 构建依赖）。
+- reqwest 阻塞客户端（core 同步内核的配套；服务复用时同样跑在 `spawn_blocking` 里）；TLS 走 rustls、crypto provider 显式选 ring（纯 Rust，交叉构建零 CMake/NASM；reqwest `rustls` feature 默认绑的 aws-lc-rs 需 C 构建，故走 no-provider + 构造时安装，见 ADR 0013）。
 - **robots.txt**（`texting_robots` 解析）：按 origin 缓存，状态码口径遵循 RFC 9309 / Google 指引——2xx 解析（解析失败视同全放行）、4xx（429 除外）全放行、**429 / 5xx / 拉取失败全禁抓**（站点明确异常时保守不抓）。禁抓的 URL 返回 `FetchError::Denied`，调用方降级为 warning。`respect_robots = false`（即 `--ignore-robots`）整段跳过。robots.txt 自身占限速槽；解析前按 500 KiB 截断（库方建议）。
 - **限速**：每 host（scheme+authority 为槽键）相邻请求最小间隔，默认 1s（`--rate-ms` 可配）；请求槽预约制、等待发生在锁外。
 - **UA**：`trans-epub/<version> (+document conversion tool; personal use)`，可配；不伪装浏览器。

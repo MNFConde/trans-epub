@@ -3,6 +3,7 @@ name = "trans-epub-fetch"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 # tests/ 顶层只留 main.rs；集成测试全走显式 [[test]]（ADR 0011）
 autotests = false
 
@@ -12,13 +13,17 @@ scraper = { version = "0.29", features = ["deterministic"] }
 texting_robots = "0.2"
 trans-epub-contract = { path = "../trans-epub-contract" }
 url = { version = "2", features = ["serde"] }
-# TLS 用 native-tls（Windows=schannel，免 CMake/NASM），与 CLI 既有口径一致
+# TLS 用 rustls；reqwest 的 `rustls` feature 默认绑 aws-lc-rs（其 aws-lc-sys 需
+# CMake/NASM 的 C 构建），故走 no-provider + 显式 ring（纯 Rust，交叉零 C 依赖）
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",
-    "native-tls",
+    "rustls-no-provider",
     "charset",
     "system-proxy",
 ] }
+# 版本须与 reqwest 内部的 rustls 同一份（Cargo.lock 合并为 0.23.x），否则
+# provider 安装不到 reqwest 实际用的那个 rustls 实例上
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 trans-epub-contract = { path = "../trans-epub-contract", features = ["test-util"] }

@@ -3,6 +3,7 @@ name = "trans-epub-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 # tests/ 顶层只留 main.rs；集成测试全走显式 [[test]]（ADR 0011）
 autotests = false
 
@@ -13,7 +14,7 @@ indicatif = "0.18"
 serde_json = "1"
 toml = "1"
 trans-epub-core = { path = "../trans-epub-core" }
-# PoliteFetcher 自这里来（reqwest/native-tls 的选择在 fetch crate 统一）
+# PoliteFetcher 自这里来（reqwest/rustls+ring 的选择在 fetch crate 统一，ADR 0013）
 trans-epub-fetch = { path = "../trans-epub-fetch" }
 walkdir = "2"
 url = "2.5.8"
