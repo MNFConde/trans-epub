@@ -60,9 +60,14 @@ trans-epub:
   打磨:
     ✔ 高亮语法集升级：syntect 默认集 → syntect-assets 扩展 dump（TypeScript/TSX/JSX/TOML 补齐，ROADMAP 开放问题 4 关闭）
     ✔ 集成测试按契约/行为/红线语义分层重组（ADR 0011：core/fetch/cli 单 binary + mod 挂载对账；顺带修 epubcheck 门假绿）
-  发布前:
-    ☐ 真机抽验执行（Koodo 主力 + Apple Books / KOReader 各一，清单见 docs/testing/manual-checklist.md）
-    ☐ GitHub Releases 首发准备（CI 交叉构建流水线：tag → 六目标 → 资产上传；版本基线；分发决策见 docs/adr/0013）
+  发布前（按依赖排序：改产物 → 自动门 → 人工门 → 首发）:
+    ☐ 真实文档站实抓抽验：四预设官方站各一 + 老式手写站样本（如 sqlite.org，验证 [web] selectors/strip 定制出口）；命中差则调 30-frontends.md 预设链并补合成 fixture
+    ☐ 抽取定制出口演进（条件项，由实抽结论触发）：selectors/strip 为"定位级自由、逻辑级零自由"（回退链取单节点 + 全量删除清单，无合并/条件/变换）；实抽若证明不够长尾（多容器合并/条件逻辑/DOM 变换），立"规则文件式抽取扩展机制"ADR，不预先上 DSL；分界固守——生成器级共性→预设（代码），站点级个性→selectors/strip（配置），不往 web.rs 加站点特例
+    ☐ 内嵌字体管线（Maple Mono CN 子集，三正交配置）：内嵌 on/off × 子集模式 preset|exact × 字体源 builtin|用户路径；下载仅触发于 builtin×exact（钉 release tag+sha256、本地缓存、失败/离线回落内置预子集 + warning 不断书）；OFL-1.1 义务：子集属修改版→字体族名避开保留名 "Maple Mono"，OFL 全文/版权/修改/溯源（含资源圆体）随书 manifest；预子集资产按通用规范汉字表 8105 字打二进制（~2-4MB）；off 档退回 CSS 具体名链；指定路径×内嵌关的矛盾配置由 CLI 提示（三期服务端在前端提示）；契约先行改 10-contracts.md，产物变化由下一条 golden 再生收编
+    ☐ 产品观察打磨：pre 轻底色/padding + 字体栈具体名（纯 CSS）+ 目录书 Untitled 次级派生（元数据规则，先改 10-contracts.md 再动代码）；版本串警告留档不做、admonition emoji 兜底缓。golden 全本再生一次，收编前面预设链/fixture/字体改动
+    ☐ 引擎冒烟：mutool 渲染非空白检查（十几行 shell，对再生后的 5 本 golden）；Playwright Chromium/WebKit 档待真有 CSS 回归事故再加
+    ☐ 真机抽验执行（Koodo 主力 + Apple Books / KOReader 各一，清单见 docs/testing/manual-checklist.md；KOReader 无 Windows 构建，走 WSL Ubuntu 系统构建后测试；须覆盖 5 本 golden，重点 mdbook/web 两本未上过真机；Apple Books 暂缺设备不阻塞其余）
+    ☐ GitHub Releases 首发准备（CI 交叉构建流水线：tag → 六目标 → 资产上传；版本基线；分发决策见 docs/adr/0013）。流水线搭建可与上面并行先行——顺带实证 rustls+ring 六目标交叉；tag 首发/版本基线定稿须在真机抽验通过之后
     ☐ crates.io 名称可用性确认（暂缓非放弃——ADR 0013；上架时按其两条路径另立决策）
   二期 · GUI（暂缓）:
     ☐ GUI 框架选型：Tauri 复用 core vs egui 纯 Rust（决策后立 ADR）
