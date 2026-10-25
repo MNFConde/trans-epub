@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "输入收敛为 Vfs / Pages 两形态"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-24
+updated: 2026-10-24
+related: ["../architecture/10-contracts.md", "0002-crate-topology-and-dependency-direction.md"]
+authoring_mode: ai_generated
+---
+
 # 0003. 输入收敛为 Vfs / Pages 两形态
 
 - 状态：accepted

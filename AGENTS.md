@@ -32,4 +32,5 @@ trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差�
 
 - 代码门禁：`cargo fmt --check` → `cargo clippy -D warnings` → `cargo test`。
 - 产物验收：epubcheck 全绿（`scripts/epubcheck.sh`）+ golden 字节回归（`UPDATE_GOLDEN=1` 再生，diff 人工确认）+ 真机抽验（`docs/testing/manual-checklist.md`）。
-- 提交信息遵循 Conventional Commits（类型: 主题，正文解释为什么）。
+- 提交信息遵循 Conventional Commits（类型: 主题，正文解释为什么）；`.githooks/commit-msg` 钩子强制格式（新克隆一次性安装：`git config core.hooksPath .githooks`）。
+- 文档门禁：`python scripts/check-links.py` / `check-frontmatter.py` / `check-markers.py` 对 docs/ 全绿（台账见 `scripts/scripts.md`）。

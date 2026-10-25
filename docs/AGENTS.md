@@ -1,3 +1,15 @@
+---
+type: rule
+status: active
+summary: "docs/ 写作约束：frontmatter 必填、编号规则、单一事实源与契约先行、方案状态标记、ADR、存档、归属"
+tags: [trans-epub, docs, rule]
+contains: [checklist]
+created: 2026-10-25
+updated: 2026-10-25
+related: ["README.md"]
+authoring_mode: ai_generated
+---
+
 # docs/ 写作约束
 
 > 作用范围：仅在本目录（docs/）写/改文档时生效。

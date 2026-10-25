@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "代码长行：pre-wrap 默认 + 可选构建期硬折行"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-10
+updated: 2026-10-24
+related: ["../architecture/20-core.md", "../architecture/50-writer.md"]
+authoring_mode: ai_generated
+---
+
 # 0007. 代码长行：pre-wrap 默认 + 可选构建期硬折行
 
 - 状态：accepted

@@ -1,8 +1,20 @@
+---
+type: docs
+status: active
+summary: "ADR 索引：一篇一文件 NNNN-slug 连续编号，格式/工作流/状态语义（proposed→accepted→superseded）与索引表"
+tags: [trans-epub, adr, map]
+contains: [checklist]
+created: 2026-10-24
+updated: 2026-10-25
+related: ["../README.md"]
+authoring_mode: ai_generated
+---
+
 # 架构决策记录（ADR）
 
 ## 是什么
 
-每条重要决策一页纸：为什么、定了什么、后果。架构文档（[../architecture/](../00-overview.md)）描述**现状是什么**；ADR 记录**为什么走到这里**——决策一经写入不再改写，被推翻时标 superseded 并指向替代 ADR，正文保持原样。
+每条重要决策一页纸：为什么、定了什么、后果。架构文档（[../architecture/00-overview.md](../architecture/00-overview.md)）描述**现状是什么**；ADR 记录**为什么走到这里**——决策一经写入不再改写，被推翻时标 superseded 并指向替代 ADR，正文保持原样。
 
 ## 格式
 

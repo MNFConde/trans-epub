@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "同步内核 + I/O 全注入（服务就绪约束）"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-24
+updated: 2026-10-24
+related: ["../architecture/10-contracts.md", "../architecture/00-overview.md"]
+authoring_mode: ai_generated
+---
+
 # 0004. 同步内核 + I/O 全注入（服务就绪约束）
 
 - 状态：accepted

@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "probe / load 分离"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-24
+updated: 2026-10-24
+related: ["../architecture/10-contracts.md", "../architecture/30-frontends.md"]
+authoring_mode: ai_generated
+---
+
 # 0010. probe / load 分离
 
 - 状态：accepted

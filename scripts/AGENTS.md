@@ -32,3 +32,9 @@
 - 对策：`node:net` + `node:crypto` 手写 RFC6455 WebSocket 帧层（见临时探针台账 cdp-driver.mjs）；HTTP 用 `node:http`。
 - 校验：握手返回 101 且能收发 JSON 帧。
 - 详情：`cairn/epub-reader-testing.md`（2026-10-25）。
+
+### 5. Windows 的 python/python3 可能是商店占位 stub
+- 坑：`command -v python` 找得到但一跑 exit 49（弹商店安装提示）；PATH 里两个名字都可能是 stub。
+- 对策：手动跑检查脚本前用 `python -c "import sys"` 探真伪，失败换 `py -3`；钩子薄壳已内置三级探测，全不可用则告警放行、不卡提交。
+- 校验：探测命令退出码 0。
+- 详情：`cairn/LOG.md` 2026-10-25（vibe 检查脚本收编轮实证）。

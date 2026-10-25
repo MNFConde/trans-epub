@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "项目更名 mdepub → trans-epub"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-24
+updated: 2026-10-24
+related: ["0002-crate-topology-and-dependency-direction.md"]
+authoring_mode: ai_generated
+---
+
 # 0001. 项目更名 mdepub → trans-epub
 
 - 状态：accepted

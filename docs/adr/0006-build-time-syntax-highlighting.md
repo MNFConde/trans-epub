@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "构建期 syntect 高亮"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-10
+updated: 2026-10-24
+related: ["../architecture/20-core.md", "../architecture/50-writer.md", "../research/ecosystem.md"]
+authoring_mode: ai_generated
+---
+
 # 0006. 构建期 syntect 高亮
 
 - 状态：accepted

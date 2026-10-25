@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "一次性全量转换，无缓存无增量"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-10
+updated: 2026-10-24
+related: ["../requirements.md"]
+authoring_mode: ai_generated
+---
+
 # 0009. 一次性全量转换，无缓存无增量
 
 - 状态：accepted

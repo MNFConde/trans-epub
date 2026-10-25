@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "EPUB3 唯一输出，不做 Kindle 适配"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-10
+updated: 2026-10-24
+related: ["../architecture/50-writer.md", "../research/ecosystem.md", "../requirements.md"]
+authoring_mode: ai_generated
+---
+
 # 0008. EPUB3 唯一输出，不做 Kindle 适配
 
 - 状态：accepted

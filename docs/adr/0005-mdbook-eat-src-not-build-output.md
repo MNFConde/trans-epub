@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "mdBook 吃 src/ 原始文件而非 build 产物"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-10
+updated: 2026-10-24
+related: ["../architecture/30-frontends.md", "../research/ecosystem.md"]
+authoring_mode: ai_generated
+---
+
 # 0005. mdBook 吃 src/ 原始文件而非 build 产物
 
 - 状态：accepted

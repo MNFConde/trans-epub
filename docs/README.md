@@ -56,3 +56,4 @@ trans-epub 项目文档索引。所有文档为规划稿，随实现推进持续
 - 同一事实只一处详述（单一事实源），其余链接回指；确定信息（版本号等）同样单源。
 - 契约类事实（接口、数据结构、CLI 面）变更：先改 [10-contracts.md](architecture/10-contracts.md)，再动代码。
 - 多候选方案用状态标记 `【当前】/【备选】/【已否决】/【已替换】`（细则见 [AGENTS.md](AGENTS.md)）。
+- 机器校验：`python scripts/check-links.py` / `check-frontmatter.py` / `check-markers.py` 对 docs/ 全绿（用法与台账见 [scripts.md](../scripts/scripts.md)）。

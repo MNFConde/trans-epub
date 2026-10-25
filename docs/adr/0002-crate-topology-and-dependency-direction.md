@@ -1,3 +1,15 @@
+---
+type: adr
+status: accepted
+summary: "四 crate 拓扑与依赖方向"
+tags: [trans-epub, adr]
+contains: [decision]
+created: 2026-10-24
+updated: 2026-10-24
+related: ["../architecture/00-overview.md", "../architecture/10-contracts.md"]
+authoring_mode: ai_generated
+---
+
 # 0002. 四 crate 拓扑与依赖方向
 
 - 状态：accepted

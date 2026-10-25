@@ -5,7 +5,7 @@ summary: "trans-epub EPUB3 写出器设计：BookDraft→字节、产出物结�
 tags: [trans-epub, architecture, writer, epub3, css, theme]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 related: ["../requirements.md", "10-contracts.md", "20-core.md"]
 authoring_mode: ai_generated
 ---
@@ -18,8 +18,21 @@ authoring_mode: ai_generated
 
 - 输入 BookDraft 已经过完整 pass 链：链接已改写、资产已就绪（Owned/Missing）、高亮已染色、折行已完成——writer **只做组装，不改内容**。
 - 返回字节而非路径（契约决定）：core 不碰文件系统。
-- 基座：**【当前】直接用 zip crate 写包**（**【已否决】epub-builder**——不暴露条目时间戳控制，无法满足确定性；本文原「patch 或换 zip 层」取后者，已落地验证——mimetype 首条目 STORED、其余 Deflated、时间戳全部归一）。
+- 基座：[【当前】 zip crate 直写](#当前基座zip-crate-直写)（[【已否决】 epub-builder](#epub-builder-被否决)——不暴露条目时间戳控制，无法满足确定性；本文原「patch 或换 zip 层」取后者，已落地验证——mimetype 首条目 STORED、其余 Deflated、时间戳全部归一）。
 - **不做 Kindle 牺牲性适配**（需求定稿决策）：以现代 EPUB3 阅读器为基准（Apple Books / KOReader / 手机 app）。
+
+### 当前基座：zip crate 直写
+
+> [!IMPORTANT] 【当前】 zip crate 直写
+>
+> mimetype 首条目 STORED、其余 Deflated、条目时间戳全部归一——确定性输出在 writer 层闭环，已落地验证。
+
+### epub-builder 被否决
+
+> [!CAUTION] 【已否决】 epub-builder
+> 原因：不暴露条目时间戳控制，无法满足确定性输出（同内容必须同字节）。
+>
+> 「patch 或换 zip 层」二选一取后者：直接换 zip 层。
 
 ## 产出物结构
 
