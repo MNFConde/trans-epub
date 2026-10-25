@@ -5,7 +5,7 @@ summary: "命令参考（旗标全表单一事实源）：路径族与 crawl 采
 tags: [trans-epub, guide, cli, reference]
 contains: [checklist]
 created: 2026-10-25
-updated: 2026-10-25
+updated: 2026-10-26
 related: ["README.md", "../architecture/60-cli.md", "../architecture/40-fetch.md"]
 authoring_mode: ai_generated
 ---
@@ -36,7 +36,7 @@ trans-epub crawl <start> [采集旗标] [通用旗标]  # 采集族：静态文�
 | 本地 `.xml` 文件 | 本地 sitemap.xml |
 | 其他本地文件 | URL 列表（一行一 URL，`#` 开头为注释行） |
 
-采集行为遵循礼貌原则：默认遵守 robots.txt（RFC 9309 口径）、每 host 限速、5xx/网络错误重试、单响应大小上限；非 HTML 扩展名（图片/压缩包等）不会当作页面抓取。
+采集行为遵循礼貌原则：默认遵守 robots.txt（RFC 9309 口径）、每 host 限速、5xx/网络错误重试、单响应大小上限；非 HTML 扩展名（图片/压缩包等）不会当作页面抓取。同域 BFS 以**起始 URL 的 host** 为界——若起始 URL 会重定向到另一域名（如 `docs.gitbook.com` → `gitbook.com`），站内链接会被判跨域而不跟进，请直接用最终域名作起点。
 
 ### 采集旗标
 
@@ -44,8 +44,8 @@ trans-epub crawl <start> [采集旗标] [通用旗标]  # 采集族：静态文�
 |---|---|---|
 | `--depth N` | 3 | BFS 深度上限（起始页为第 0 层） |
 | `--max-pages N` | 500 | 页面数安全帽 |
-| `--include GLOB` | — | URL path 匹配才收录，可重复 |
-| `--exclude GLOB` | — | URL path 命中即丢弃，可重复 |
+| `--include GLOB` | — | URL path 匹配才收录（去前导 `/` 后匹配，如 `guide/*`），可重复 |
+| `--exclude GLOB` | — | URL path 命中即丢弃（同上口径），可重复 |
 | `--rate-ms N` | 1000 | 每 host 相邻请求最小间隔（毫秒） |
 | `--ignore-robots` | 关 | 不遵守 robots.txt（自负其责） |
 | `--preset NAME` | — | 正文抽取预设，见下表 |

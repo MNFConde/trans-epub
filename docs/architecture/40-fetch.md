@@ -44,6 +44,7 @@ fetch 是**采集库**：把"礼貌地拿到一批已排序页面"做成可复�
 | **同域递归**（BFS） | 发现序（层序）= 书序 | 兜底；深度上限、include/exclude 路径 glob、页面数安全帽（默认 500）均可配 |
 
 - 采集时只保留 `text/html`；非页面资源跳过并 warning。BFS 链接抽取对明显非 HTML 的扩展名（png/js/zip…）黑名单短路，省一次请求。
+- **同域以起始 URL 的 host 为界**：起始 URL 重定向到另一域名时（如 `docs.gitbook.com` → `gitbook.com`），站内链接全判跨域不跟进（2026-10 实抓实证；保守正确但反直觉，改判最终 host 属发现语义变更，需求出现再议——CLI 侧已在用户手册提示用最终域名作起点）。
 - 排序是网站成书的质量命门：`--dry-run` 在发现完成后打印清单即停，用户可以把清单粘进 `list.txt` 重排后二次转换。list / sitemap 只发现 URL，页面体由壳层按需 `fetch_pages`；BFS 在发现时顺带保留页面体，免二次抓取。
 - sitemap 经 html5ever（scraper）**宽松解析**：sitemap 的标签集（`urlset/url/loc`、`sitemapindex/sitemap/loc`）小写无前缀、实体集与 HTML 一致，按 HTML 解析正确且免独立 XML 依赖，对缺 xmlns 等非标准变体更宽容；带命名空间前缀的变体不支持（已文档化）。
 - 编码处理在 web 前端（body 传原始字节），fetch 不做有损转换。

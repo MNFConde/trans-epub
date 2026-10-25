@@ -61,8 +61,8 @@ trans-epub:
     ✔ 高亮语法集升级：syntect 默认集 → syntect-assets 扩展 dump（TypeScript/TSX/JSX/TOML 补齐，ROADMAP 开放问题 4 关闭）
     ✔ 集成测试按契约/行为/红线语义分层重组（ADR 0011：core/fetch/cli 单 binary + mod 挂载对账；顺带修 epubcheck 门假绿）
   发布前（按依赖排序：改产物 → 自动门 → 人工门 → 首发）:
-    ☐ 真实文档站实抓抽验：四预设官方站各一 + 老式手写站样本（如 sqlite.org，验证 [web] selectors/strip 定制出口）；命中差则调 30-frontends.md 预设链并补合成 fixture
-    ☐ 抽取定制出口演进（条件项，由实抽结论触发）：selectors/strip 为"定位级自由、逻辑级零自由"（回退链取单节点 + 全量删除清单，无合并/条件/变换）；实抽若证明不够长尾（多容器合并/条件逻辑/DOM 变换），立"规则文件式抽取扩展机制"ADR，不预先上 DSL；分界固守——生成器级共性→预设（代码），站点级个性→selectors/strip（配置），不往 web.rs 加站点特例
+    ✔ 真实文档站实抓抽验（2026-10-26）：四预设官方站全命中（mkdocs-material 19 章/docusaurus 20 章/vitepress.dev 20 章/gitbook 10 章，language class 存活、无导航分页泄漏）；mkdocs 发现 .md-content__button 编辑按钮漏正文→已补预设级剔除；老式手写站 sqlite.org 20 章，[web] strip 三行配置干净出书；vitejs.dev/vitepress 已 404（站迁 vitepress.dev）；GitBook live 实为 Next.js SSR（无 JS 客户端可用）但代码块 Shiki 预染色无 language-* → 按设计回退纯文本；起点 host 重定向后同域判定失效已记 40-fetch.md 已知边界；产物留 tmp/crawl/
+    ✔ 抽取定制出口演进（2026-10-26 实抽判定：不触发）：selectors/strip"定位级自由"满足 sqlite.org 类老站（strip 出口验证通过），未见多容器合并/条件逻辑/DOM 变换需求；分界不变——生成器级共性→预设（代码），站点级个性→配置；新需求出现再立"规则文件式抽取扩展机制"ADR，不预先上 DSL
     ☐ 内嵌字体管线（Maple Mono CN 子集，三正交配置）：内嵌 on/off × 子集模式 preset|exact × 字体源 builtin|用户路径；下载仅触发于 builtin×exact（钉 release tag+sha256、本地缓存、失败/离线回落内置预子集 + warning 不断书）；OFL-1.1 义务：子集属修改版→字体族名避开保留名 "Maple Mono"，OFL 全文/版权/修改/溯源（含资源圆体）随书 manifest；预子集资产按通用规范汉字表 8105 字打二进制（~2-4MB）；off 档退回 CSS 具体名链；指定路径×内嵌关的矛盾配置由 CLI 提示（三期服务端在前端提示）；契约先行改 10-contracts.md，产物变化由下一条 golden 再生收编
     ☐ 产品观察打磨：pre 轻底色/padding + 字体栈具体名（纯 CSS）+ 目录书 Untitled 次级派生（元数据规则，先改 10-contracts.md 再动代码）；版本串警告留档不做、admonition emoji 兜底缓。golden 全本再生一次，收编前面预设链/fixture/字体改动
     ☐ 引擎冒烟：mutool 渲染非空白检查（十几行 shell，对再生后的 5 本 golden）；Playwright Chromium/WebKit 档待真有 CSS 回归事故再加

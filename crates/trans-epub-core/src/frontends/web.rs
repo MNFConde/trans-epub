@@ -368,11 +368,27 @@ fn find_root<'d>(doc: &'d Html, chain: &[Selector]) -> Option<scraper::ElementRe
     None
 }
 
-/// 剔除 chrome：内置清单 + cfg.strip；不动正文根本身（根外元素反正不会
-/// 被序列化，一并删掉无害）。
+/// 预设级补充剔除：生成器渲染进**正文容器内**的页面 chrome（适配分界
+/// 口径——生成器级共性进代码，30-frontends.md）。mkdocs 的 edit/view
+/// 源按钮 `.md-content__button`（含 SVG）在 .md-content__inner 里，
+/// 2026-10 实抓 squidfunk.github.io/mkdocs-material 时发现漏进正文。
+fn preset_strip(cfg: &WebCfg) -> &'static [&'static str] {
+    match cfg.preset.as_deref() {
+        Some("mkdocs") => &[".md-content__button"],
+        _ => &[],
+    }
+}
+
+/// 剔除 chrome：内置清单 + 预设级补充 + cfg.strip；不动正文根本身（根外
+/// 元素反正不会被序列化，一并删掉无害）。
 fn strip_chrome(doc: &mut Html, root_id: NodeId, cfg: &WebCfg) {
     let builtin = Selector::parse(BUILTIN_STRIP).expect("constant selector");
     let strips: Vec<Selector> = std::iter::once(builtin)
+        .chain(
+            preset_strip(cfg)
+                .iter()
+                .map(|css| Selector::parse(css).expect("constant preset selector")),
+        )
         .chain(cfg.strip.iter().filter_map(|css| Selector::parse(css).ok()))
         .collect();
     for sel in &strips {
