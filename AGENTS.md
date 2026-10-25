@@ -6,7 +6,7 @@ trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差�
 
 1. 先读本文件（项目约束起点）。
 2. 仓库存在 `cairn/` 时，先读 `cairn/RULES.md`（知识沉淀规则与完成回复门）；否则跳过。
-3. 目录级约束：`docs/AGENTS.md`、`scripts/AGENTS.md`，读取对应目录文件时自动生效。
+3. 目录级约束：`docs/AGENTS.md`、`scripts/AGENTS.md`、`crates/AGENTS.md`，读取对应目录文件时自动生效。
 4. 按需读 `docs/README.md`（文档地图）与 `cairn/ROADMAP.md`、`cairn/LOG.md`（存在时）。
 
 ## 文档协作规则

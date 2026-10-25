@@ -5,7 +5,7 @@ summary: "trans-epub 公共契约：输入源两形态（Vfs/Pages）、前端 t
 tags: [trans-epub, architecture, contract, ir, source, frontend-trait]
 contains: [design, contract]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-26
 related: ["../requirements.md", "00-overview.md"]
 authoring_mode: ai_generated
 ---
@@ -76,6 +76,7 @@ pub trait Fetcher: Send + Sync {
 
 - **web 输入是"已抓取"的**。core 不含任何爬取逻辑；`Pages` 的顺序就是成书顺序，页面发现与排序质量是采集方（CLI 的 crawl 命令 / 服务）的责任。
 - `Fetcher` 是同步 trait（core 是同步内核）；异步实现由服务侧用 `spawn_blocking` 适配。
+- **`Fetcher` 的职责止于传输与发现**：产出原始字节，不做内容理解——正文抽取、编码判定、站点适配全在 core web 前端。站点适配（预设 / `selectors` / `strip`）的单一事实源是 `WebCfg`（数据），不随 Fetcher 实现走：CLI 与服务可各换采集实现，抽取规则永远只有 core 一套。
 - 离线模式不是 Fetcher 的事：`AssetsCfg.remote = false` 时 asset-resolve pass 直接跳过远程拉取并降级。
 
 ## 前端契约：probe / load 分离

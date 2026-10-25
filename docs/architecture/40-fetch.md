@@ -5,7 +5,7 @@ summary: "trans-epub-fetch 获取库（MVP3 已落地）：PoliteFetcher（reqwe
 tags: [trans-epub, architecture, fetch, crawler, robots, sitemap]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-25
+updated: 2026-10-26
 related: ["../requirements.md", "10-contracts.md", "00-overview.md"]
 authoring_mode: ai_generated
 ---
@@ -18,6 +18,7 @@ fetch 是**采集库**：把"礼貌地拿到一批已排序页面"做成可复�
 
 - 依赖方向**只能是 fetch → contract**：fetch 实现契约的 `Fetcher`、产出 `FetchedPage`，绝不依赖 core（红线见 00-overview.md）。这样 fetch 保持轻量，也能被未来服务单独拿来当底层 HTTP 客户端。
 - **core 永远不知道 fetch 的存在**。core 只见 `Fetcher` trait 与 `Source::Pages`；换实现（服务自带、测试 mock）零成本。
+- **fetch 不做内容理解**：产出原始字节为止。正文抽取、编码判定、站点适配（预设 / selectors / strip）全在 core web 前端 + `WebCfg` 配置——sqlite.org 这类"无语义标签老站"的适配是用户侧 TOML，不是 fetch 代码，fetch 换实现时这些规则零牵连。
 - **MVP3 已落地**（crate `trans-epub-fetch`）。MVP1 期间 CLI 内置的最小 Fetcher（reqwest 薄包装）已按计划整体平移进来，CLI 的资产拉取与页面采集统一走 `PoliteFetcher`。
 
 ## 能力面
@@ -60,6 +61,8 @@ trans-epub crawl <start-url | sitemap.xml | list.txt> [--depth N] [--max-pages N
 ### 服务化角色（三期）
 
 服务需要的是"带队列/调度/缓存的采集系统"，那是服务的领域层；fetch crate 是它下面的**礼貌客户端库**。两种消费方式都成立：直接复用 PoliteFetcher，或实现契约 `Fetcher` 换成服务自己的实现（代理、鉴权、分布式缓存）。队列/优先级/任务持久化不在本 crate 范围。
+
+替换边界（约束）：换实现（爬虫框架、代理池等）只替换**传输与发现**这一层；正文抽取与站点适配仍走 core web 前端 + `WebCfg` 同一事实源，**服务壳层不得绕过 core 自写抽取**——否则 CLI 与服务的抽取规则两套漂移。替换实现须保持礼貌与发现语义（robots 口径、限速、发现序即书序），fetch 的 mock 契约测试与 web golden 样书是行为锚点。
 
 ## 合规
 

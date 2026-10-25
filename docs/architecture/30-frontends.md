@@ -5,7 +5,7 @@ summary: "trans-epub 三前端（均已落地）：md（结构探测六规则+�
 tags: [trans-epub, architecture, frontend, md, mdbook, web, comrak]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-25
+updated: 2026-10-26
 related: ["../requirements.md", "10-contracts.md", "20-core.md"]
 authoring_mode: ai_generated
 ---
@@ -76,6 +76,7 @@ include 的 path 以 src 根（SUMMARY 所在目录）为基经 RelPath 校验�
 ### load：正文抽取
 
 - **选择器链**（取链内首个命中选择器的首个匹配）：`WebCfg.selectors` 覆盖 > `WebCfg.preset` 内置链 > 默认链。内置预设链：mkdocs = `.md-content → article → main`；docusaurus = `article → main`；vitepress = `.vp-doc → main → article`；gitbook = `article → .markdown-body → main`。默认链 `main → article → .content → .markdown-body → body` 兜底。未知预设名 / 坏选择器 → `StructureAmbiguous` warning + 回落默认链；全链落空 → body 兜底。
+- **适配分界（口径，评审红线）**：生成器级共性 → 内置预设（代码，个位数、跨站稳定）；站点级个性 → `WebCfg.selectors` / `strip`（配置，数据）。不把站点特例内化进 web.rs。预设链与清理规则是 CLI 与三期服务共用的单一事实源，同一份站点适配配置两种入口通用。
 - **硬要求：代码块的 language class 必须存活**（`<pre><code class="language-rust">`）。这是 percollate 丢高亮的根因教训——抽取器宁可保守（保留整个代码块节点）也不做激进清洗。语言不在语法集时静默回退纯文本、类名保留（语法集为 syntect-assets 扩展 dump，覆盖 TypeScript/TSX/JSX/TOML 等，见 20-core.md highlight pass）。
 - 清理规则：内置剔除 `nav / footer / aside / script / style / noscript / form / button` 加 `WebCfg.strip`；正文经 **XML 安全序列化**直接产出（script/style/注释从 load 起就不进章 HTML）。
 - **引用保持原始形式**（义务清单第 3 条），登记不改写：`img/source` 的 src 以**页面 URL 为基**规范化为绝对 URL 后登记（http(s) → `AssetData::Remote`、`data:` → 解码 Owned、纯锚点 src 不登记）；`a[href]` 原样留给 link-rewrite 的 Url 世界解析。
