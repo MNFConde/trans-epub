@@ -68,14 +68,14 @@ authoring_mode: ai_generated
 | crate | 职责 | 主要依赖 |
 |---|---|---|
 | trans-epub-contract | 全部跨 crate 类型与 trait：Source/Vfs/FetchedPage/Fetcher/IR/Frontend/Writer/ProgressSink/BuildError/ResolvedConfig | 仅 serde / url / thiserror 一级 |
-| trans-epub-core | 转换内核：三前端实现、pass 链、EPUB 写出器、Converter 门面 | comrak / syntect / scraper / epub-builder |
+| trans-epub-core | 转换内核：三前端实现、pass 链、EPUB 写出器、Converter 门面 | comrak / syntect / scraper / zip |
 | trans-epub-fetch | 默认 Fetcher 实现 + 页面发现（robots、限速、sitemap、同域递归） | reqwest / textview-robots 级 |
 | trans-epub-cli | 壳：参数解析、配置合并、I/O 注入、落盘、报告呈现 | clap / indicatif |
 
 ### 依赖红线（架构不变量）
 
 1. **core 永不依赖 fetch**，依赖方向只能是 fetch → contract。采集永远可替换，转换内核不感知采集的存在——这是"获取与转换分离"的结构保证。
-2. **contract 不依赖任何兄弟 crate**。契约 crate 存在的理由就在这：fetch 若要实现 core 里的 trait，就会拖进整个转换内核（comrak/syntect/epub-builder 全家桶）；把接口物理隔离后，fetch 只需轻量契约。
+2. **contract 不依赖任何兄弟 crate**。契约 crate 存在的理由就在这：fetch 若要实现 core 里的 trait，就会拖进整个转换内核（comrak/syntect/scraper 全家桶）；把接口物理隔离后，fetch 只需轻量契约。
 3. **壳层是唯一组装点**。配置优先级合并（TOML < front matter < CLI flags）、Vfs/Fetcher/ProgressSink 的注入、产物落盘/上传，只发生在壳层；core 收到的永远是已合并的 `ResolvedConfig` 与已注入的 I/O 实现。
 4. **core 对外只暴露 Converter 门面与契约重导出**。scraper 等 DOM 类型不出 core（详见 20-core.md 的 Pass 归属论证）。
 

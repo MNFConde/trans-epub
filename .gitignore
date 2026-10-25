@@ -1,1 +1,8 @@
 /target
+/tmp
+
+# Local working files, not part of the project
+/cairn/
+/.cairn/
+/.zcode/
+

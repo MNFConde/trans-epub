@@ -128,7 +128,7 @@ EPUB 内部路径规则（章节文件名 `Text/ch00001.xhtml`、资产按类型
 ### DOM 策略
 
 - 解析器：scraper 0.29（html5ever 0.40 + ego-tree 0.11；启用 `deterministic` feature，属性序稳定）。变更走 ego-tree 的 `append_subtree`/`append_id`/`detach` 与 scraper `Element.attrs`（pub），全部封装在 dom.rs，scraper 类型不出此边界。
-- 序列化是**自实现的 XML 安全输出**：EPUB3 内容文档是 XHTML，html5ever 自带的 HTML 序列化（`<br>` 不自闭合）不可用——dom.rs 负责 void 元素自闭合、文本/属性转义；注释与 script/style/noscript/template 一律丢弃（输出格式约束，不是通用 HTML 处理）。归一化由 golden 锁定，不追求与源字节一致。
+- 序列化是**自实现的 XML 安全输出**：EPUB3 内容文档是 XHTML，**【已否决】html5ever 自带的 HTML 序列化**（`<br>` 不自闭合，XHTML 不可用）——dom.rs 负责 void 元素自闭合、文本/属性转义；注释与 script/style/noscript/template 一律丢弃（输出格式约束，不是通用 HTML 处理）。归一化由 golden 锁定，不追求与源字节一致。
 - 前端产出 HTML 字符串进 IR，pipeline 再解析——**字符串边界**刻意保留：comrak 升级、scraper 升级互不波及，前端与 pass 解耦。
 - md 前端经 comrak 渲染 HTML 时**不做**高亮/链接处理（义务清单第 6 条），保证三种来源进 pipeline 时同型。
 
