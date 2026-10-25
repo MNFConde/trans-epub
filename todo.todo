@@ -38,25 +38,27 @@ trans-epub:
       ✔ golden 样书 3 本（flat / tree / single，字节级 + 确定性回归）
       ✔ 真机抽验清单：docs/testing/manual-checklist.md（Koodo 主力 + Apple Books + KOReader）
   MVP2 · mdBook 前端:
-    ☐ SUMMARY.md 自解析：嵌套不拍平、part 标题、draft/hidden 章节
-    ☐ 指令展开：{{#include}} 区间语法
-    ☐ 指令展开：{{#rustdoc_include}} 行号锚点
-    ☐ 指令展开：{{#playground}} / {{#hide}}
-    ☐ book.toml 元数据收割
-    ☐ mdbook golden fixtures（嵌套 ≥3 层 / 指令全表 / 缺失目标）
+    ✔ SUMMARY.md 自解析：嵌套不拍平、part 标题、draft/hidden 章节
+    ✔ 指令展开：{{#include}} 区间语法
+    ✔ 指令展开：{{#rustdoc_include}} 行号锚点
+    ✔ 指令展开：{{#playground}} / {{#hide}}
+    ✔ book.toml 元数据收割
+    ✔ mdbook golden fixtures（嵌套 ≥3 层 / 指令全表 / 缺失目标）
   MVP3 · 网站前端 + fetch crate:
     trans-epub-fetch:
-      ☐ PoliteFetcher：robots / 限速 / 重试退避 / 大小上限 / UA
-      ☐ 页面发现：URL 列表 / sitemap / 同域递归（深度与模式可配）
-      ☐ CLI 内置最小 Fetcher 平移进 fetch crate
-      ☐ mock HTTP 测试 + 录制快照 golden
+      ✔ PoliteFetcher：robots / 限速 / 重试退避 / 大小上限 / UA
+      ✔ 页面发现：URL 列表 / sitemap / 同域递归（深度与模式可配）
+      ✔ CLI 内置最小 Fetcher 平移进 fetch crate
+      ✔ mock HTTP 测试 + golden 快照（偏离原"真站录制"计划，落成预设样本 fixture，见 40-fetch.md）
     web 前端:
-      ☐ 正文抽取：默认选择器链 + 四预设（mkdocs/docusaurus/vitepress/gitbook）
-      ☐ language class 存活（硬要求）+ 相对 URL 规范化
-      ☐ 编码处理（charset / meta 嗅探 / 兜底 UTF-8）
-      ☐ 脏 HTML 边角 fixture 集
+      ✔ 正文抽取：默认选择器链 + 四预设（mkdocs/docusaurus/vitepress/gitbook）
+      ✔ language class 存活（硬要求）+ 相对 URL 规范化
+      ✔ 编码处理（charset / meta 嗅探 / 兜底 UTF-8）
+      ✔ 脏 HTML 边角 fixture 集
     cli:
-      ☐ crawl 子命令（start-url / sitemap / list.txt）
+      ✔ crawl 子命令（start-url / sitemap / list.txt）
+  打磨:
+    ✔ 高亮语法集升级：syntect 默认集 → syntect-assets 扩展 dump（TypeScript/TSX/JSX/TOML 补齐，ROADMAP 开放问题 4 关闭）
   发布前:
     ☐ 真机抽验执行（Koodo 主力 + Apple Books / KOReader 各一，清单见 docs/testing/manual-checklist.md）
     ☐ crates.io 名称可用性确认（trans-epub / -core / -contract / -fetch / -cli）

@@ -1618,6 +1618,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
+name = "ryu"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1761,6 +1767,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7523beb55eece201a2356bee0bbca0d1ab466c14c07703b2e0ee6d42cb0c2c"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -1933,6 +1952,24 @@ dependencies = [
  "thiserror 2.0.21",
  "walkdir",
  "yaml-rust",
+]
+
+[[package]]
+name = "syntect-assets"
+version = "0.23.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9555fce7f4031d83b10a9ca0e9c2fe8eba1542c06e2182b7a342e0f2ec2a38e"
+dependencies = [
+ "bincode",
+ "flate2",
+ "globset",
+ "log",
+ "once_cell",
+ "semver",
+ "serde",
+ "serde_yaml",
+ "syntect",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2297,6 +2334,7 @@ dependencies = [
  "scraper",
  "sha2",
  "syntect",
+ "syntect-assets",
  "toml 1.1.8+spec-1.1.0",
  "trans-epub-contract",
  "url",
@@ -2365,6 +2403,12 @@ name = "unit-prefix"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81e544489bf3d8ef66c953931f56617f423cd4b5494be343d9b9d3dda037b9a3"
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "url"

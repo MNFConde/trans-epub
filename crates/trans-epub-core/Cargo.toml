@@ -15,6 +15,8 @@ html5ever = "0.40"
 scraper = { version = "0.29", features = ["deterministic"] }
 sha2 = "0.11"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
+# bat 扩展语法集 dump（TypeScript/TSX 等 syntect 默认集没有的语言）；正则引擎保持 fancy 纯 Rust
+syntect-assets = { version = "0.23", default-features = false, features = ["regex-fancy"] }
 toml = "1"
 trans-epub-contract = { path = "../trans-epub-contract" }
 url = { version = "2", features = ["serde"] }

@@ -68,7 +68,7 @@ authoring_mode: ai_generated
 | crate | 职责 | 主要依赖 |
 |---|---|---|
 | trans-epub-contract | 全部跨 crate 类型与 trait：Source/Vfs/FetchedPage/Fetcher/IR/Frontend/Writer/ProgressSink/BuildError/ResolvedConfig | 仅 serde / url / thiserror 一级 |
-| trans-epub-core | 转换内核：三前端实现、pass 链、EPUB 写出器、Converter 门面 | comrak / syntect / scraper / zip |
+| trans-epub-core | 转换内核：三前端实现、pass 链、EPUB 写出器、Converter 门面 | comrak / syntect / syntect-assets / scraper / zip |
 | trans-epub-fetch | 默认 Fetcher 实现（PoliteFetcher：robots / 限速 / 重试 / 大小上限）+ 页面发现三机制（URL 列表 / sitemap / 同域 BFS） | reqwest / texting_robots / scraper / globset |
 | trans-epub-cli | 壳：参数解析、配置合并、I/O 注入、落盘、报告呈现 | clap / indicatif |
 

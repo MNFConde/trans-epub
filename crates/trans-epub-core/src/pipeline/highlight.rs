@@ -5,8 +5,10 @@
 //!（`class="syn-source syn-rust …"`，前缀 `syn-` 防止与书内 CSS 冲突），
 //! 配色 CSS 由 [`theme_css`] 按主题名生成，writer 的 code.css 内嵌。
 //!
-//! syntect 默认语法/主题集加载昂贵，进程内 `OnceLock` 只加载一次；
-//! 加载的是编译期二进制 dump，同版本字节确定 → 输出确定。
+//! 语法集来自 syntect-assets 的编译期扩展 dump（bat 同源，比 syntect
+//! 默认集多 TypeScript/TSX/JSX/TOML 等语言），主题集仍是 syntect 默认；
+//! 两者的二进制 dump 加载昂贵，进程内 `OnceLock` 只加载一次；
+//! 加载的是编译期内嵌 dump，同版本字节确定 → 输出确定。
 
 use std::sync::OnceLock;
 
@@ -96,7 +98,12 @@ fn sel_code() -> &'static scraper::Selector {
 
 fn syntax_set() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SET.get_or_init(SyntaxSet::load_defaults_newlines)
+    SET.get_or_init(|| {
+        syntect_assets::assets::HighlightingAssets::from_binary()
+            .get_syntax_set()
+            .expect("crate 内嵌 dump 反序列化不会失败")
+            .clone()
+    })
 }
 
 fn theme_set() -> &'static ThemeSet {
@@ -147,6 +154,20 @@ mod tests {
             "expected classed spans in: {html}"
         );
         assert!(html.contains("fn"));
+    }
+
+    #[test]
+    fn highlights_typescript() {
+        let html = highlight_code(
+            "const x: number = 1;\ninterface Foo { bar: string }\n",
+            "ts",
+        )
+        .unwrap();
+        assert!(
+            html.contains("syn-source syn-ts"),
+            "expected classed spans in: {html}"
+        );
+        assert!(html.contains("interface"));
     }
 
     #[test]

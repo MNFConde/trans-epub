@@ -218,14 +218,14 @@ fn web_pages_extraction_and_rewrite() {
 
 /// 四个站点预设各一组样本页（30-frontends.md fixture 要求）：预设链命中
 /// 正文根、chrome 剔除、language class 存活。vitepress 样本用真实的
-/// `language-ts`——syntect 默认语法集不含 TypeScript，走静默回退纯文本
-///（`unknown_language_fallback = true`），断言类名存活而非染色。
+/// `language-ts`——语法集为 syntect-assets 扩展 dump（含 TypeScript），
+/// 四预设样本均应染色且 `language-*` class 存活。
 #[test]
 fn web_preset_samples_extract() {
     let samples = [
         ("mkdocs", "Material for MkDocs", true),
         ("docusaurus", "Docusaurus Docs", true),
-        ("vitepress", "VitePress Guide", false),
+        ("vitepress", "VitePress Guide", true),
         ("gitbook", "GitBook Page", true),
     ];
     for (name, h1, highlighted) in samples {
@@ -257,12 +257,8 @@ fn web_preset_samples_extract() {
             );
         } else {
             assert!(
-                ch1.contains(r#"<code class="language-ts">"#),
-                "{name}: language class 必须存活（未知语言回退纯文本）：{ch1}"
-            );
-            assert!(
-                !ch1.contains("syn-source"),
-                "{name}: ts 不在默认语法集：{ch1}"
+                ch1.contains(r#"<code class="language-"#),
+                "{name}: language class 必须存活：{ch1}"
             );
         }
         assert!(!ch1.contains("chrome"), "{name}: chrome 应剔除：{ch1}");
@@ -294,6 +290,22 @@ fn entry_bytes(output: &BuildOutput, name: &str) -> Vec<u8> {
 
 fn utf8(name: &str, output: &BuildOutput) -> String {
     String::from_utf8(entry_bytes(output, name)).expect("utf-8 entry")
+}
+
+/// 去掉 HTML 标签只留文本：高亮 span 会把代码块内连续文本逐 token
+/// 切开，内容断言比对纯文本更稳。
+fn plain_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
 }
 
 #[test]
@@ -552,11 +564,12 @@ fn mdbook_structure_parts_and_directives() {
     assert!(play.contains("playground source"), "断链保留文字");
     assert!(!play.contains("example.rs"), "断链不得残留 href");
 
-    // appendix：缺失 include / 未知指令 → 原文保留（代码块内的指令
-    // 文本被高亮 span 切开，断言取未切开的子串）
+    // appendix：缺失 include / 未知指令 → 原文保留。指令文本在代码块内，
+    // 高亮 span 会把连续文本逐 token 切开，断言先去标签再比对纯文本。
     let appendix = utf8("OEBPS/Text/ch00006.xhtml", &output);
-    assert!(appendix.contains("missing.rs"), "{appendix}");
-    assert!(appendix.contains("{{#if feature}}"));
+    let plain = plain_text(&appendix);
+    assert!(plain.contains("{{#include code/missing.rs}}"), "{plain}");
+    assert!(plain.contains("{{#if feature}}"));
 
     // 报告：draft(structure-ambiguous) + missing include 与未知指令
     // (directive-unresolved ×2) + playground 断链(link-unresolved)
