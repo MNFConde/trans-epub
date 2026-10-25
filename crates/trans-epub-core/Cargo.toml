@@ -3,6 +3,7 @@ name = "trans-epub-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 # tests/ 顶层只留 main.rs；集成测试全走显式 [[test]]（ADR 0011）
 autotests = false
 

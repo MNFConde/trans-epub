@@ -3,6 +3,7 @@ name = "trans-epub-contract"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [features]
 # 测试工具模块（MemVfs / MockFetcher）：各 crate 的 dev-dependencies 打开

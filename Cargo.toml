@@ -11,4 +11,5 @@ members = [
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-# license 待定：先自用，保留开源可能
+# AGPL-3.0-only：防他人拿库搭竞争闭源服务；版权人保留双许可自由（ADR 0012）
+license = "AGPL-3.0-only"
