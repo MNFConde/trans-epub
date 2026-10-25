@@ -1,7 +1,7 @@
 ---
 type: testing
 status: active
-summary: "trans-epub 真机抽验清单：MVP1 起随每次大改动抽验；主力 Koodo Reader，Apple Books / KOReader 各一；检查点覆盖代码高亮亮暗切换、长行折行、嵌套目录跳转、图片显示、脚注与 admonition 渲染、封面、mdBook 源结构"
+summary: "trans-epub 真机抽验清单：MVP 里程碑合入前全量抽验；主力 Koodo Reader，Apple Books / KOReader 各一；检查点覆盖代码高亮亮暗切换、长行折行、嵌套目录跳转、图片显示、脚注与 admonition 渲染、封面、mdBook 源结构、web 源抽取与乱码"
 tags: [trans-epub, testing, manual-checklist, epub-readers]
 contains: [checklist]
 created: 2026-10-24
@@ -30,6 +30,8 @@ cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/flat -o fla
 cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/tree -o tree.epub
 cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/mdbook -o mdbook.epub
 ```
+
+web 源用 `crawl` 对一个小型静态站现抓现转（例如 `trans-epub crawl https://<小站>/ --preset <预设> -o web.epub`）；离线替代：把 golden 的 web 样书页面存成 `list.txt` 后经 crawl 二次转换。
 
 ## 检查点
 
@@ -76,6 +78,16 @@ cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/mdbook -o m
 - [ ] `{{#playground}}` 折为代码块 + "playground source" 文字（断链降级，无死链点击）
 - [ ] draft 章（Draft chapter）与未列出的 hidden.md 不出现在目录与正文
 - [ ] 缺失 include 与未知指令以原文可见（appendix 章内可见指令文本）
+
+### web 源（MVP3，crawl 现抓或 web 样书）
+
+- [ ] 章节顺序 = crawl 发现顺序（dry-run 清单与成书目录一致）
+- [ ] 站点 chrome 不残留（导航/侧栏/页脚/按钮不出现在正文）
+- [ ] 代码块 language class 存活并染色；未知语言（如 ts）等宽纯文本
+- [ ] 相对与同源绝对内链都跳到目标章；未入站页面链接保持站外可点；跨站链接原样
+- [ ] 页面图片（含 CDN 跨源）已嵌入显示
+- [ ] 非 UTF-8 页面（meta charset）无乱码（web 样书 api 章 "Référence"）
+- [ ] 章名合理（正文 h1 优先；无 h1 时页面 title / URL 末段兜底）
 
 ### 元数据与基础
 

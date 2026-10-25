@@ -322,6 +322,20 @@ pub fn serialize_fragment(html: &Html) -> String {
     out
 }
 
+/// 序列化某元素的全部子节点（web 前端抽取正文根用；与片段序列化同一
+/// XML 安全规则——script/style/注释在这一步就被剔除，"干净 HTML"义务
+/// 从 load 起算）。
+pub(crate) fn serialize_children(html: &Html, id: NodeId) -> String {
+    let Some(node) = html.tree.get(id) else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for child in node.children() {
+        serialize_node(child, &mut out);
+    }
+    out
+}
+
 /// 从 `node`（Fragment/Document 根）下钻过 `<html>`（及可能的
 /// `<body>`）外壳，返回承载真实内容的节点。
 fn descend_html_shell(node: NodeRef<'_, Node>) -> NodeRef<'_, Node> {

@@ -8,6 +8,8 @@ rust-version.workspace = true
 comrak = "0.55"
 data-url = "0.3.2"
 ego-tree = "0.11"
+# web 前端编码链（content_type charset > meta 嗅探 > UTF-8）
+encoding_rs = "0.8"
 globset = "0.4"
 html5ever = "0.40"
 scraper = { version = "0.29", features = ["deterministic"] }

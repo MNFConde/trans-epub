@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use trans_epub_contract::config::ResolvedConfig;
 use trans_epub_contract::progress::NoProgress;
-use trans_epub_contract::source::Source;
+use trans_epub_contract::source::{FetchedPage, Source};
 use trans_epub_contract::testing::{MemVfs, MockFetcher};
 use trans_epub_contract::writer::BuildOutput;
 use trans_epub_core::{Converter, Io};
@@ -50,6 +50,224 @@ fn convert_with(name: &str, config: ResolvedConfig) -> BuildOutput {
     Converter::new()
         .convert(&Source::Vfs(Arc::new(vfs)), &config, &io)
         .expect("conversion succeeds")
+}
+
+// ---------------------------------------------------------------------------
+// web（MVP3）：Pages 源 → 抽取 → 改写（30-frontends.md 的 fixture 要求）
+// ---------------------------------------------------------------------------
+
+fn web_page(file: &str, url: &str, content_type: &str) -> FetchedPage {
+    FetchedPage::from_bytes(
+        url.parse().expect("fixture url"),
+        std::fs::read(format!("{FIXTURES}/web/{file}")).expect("fixture page readable"),
+        content_type,
+    )
+}
+
+/// web 样书：3 页有效（默认链）+ 1 重复 URL + 1 非 HTML 资源。
+fn convert_web() -> BuildOutput {
+    let pages = vec![
+        web_page(
+            "home.html",
+            "https://docs.example.dev/",
+            "text/html; charset=utf-8",
+        ),
+        web_page(
+            "guide/install.html",
+            "https://docs.example.dev/guide/install.html",
+            "text/html",
+        ),
+        web_page(
+            "guide/api.html",
+            "https://docs.example.dev/guide/api.html",
+            "text/html",
+        ),
+        // 重复 URL：保留首个 + DuplicateSource warning
+        web_page("home.html", "https://docs.example.dev/", "text/html"),
+        // 非 text/html：跳过 + warning
+        FetchedPage::from_bytes(
+            "https://docs.example.dev/feed.txt".parse().unwrap(),
+            b"plain".to_vec(),
+            "text/plain",
+        ),
+    ];
+    let fetcher = MockFetcher::new()
+        .insert(
+            "https://docs.example.dev/img/arch.png",
+            png_bytes(),
+            "image/png",
+        )
+        .insert(
+            "https://cdn.example.dev/diagram.png",
+            png_bytes(),
+            "image/png",
+        );
+    let io = Io {
+        fetcher: Arc::new(fetcher),
+        progress: Arc::new(NoProgress),
+    };
+    Converter::new()
+        .convert(&Source::Pages(pages), &ResolvedConfig::default(), &io)
+        .expect("web conversion succeeds")
+}
+
+#[test]
+fn web_pages_extraction_and_rewrite() {
+    let output = convert_web();
+
+    // spine 3 章：home → install → api（顺序即 Pages 顺序）
+    let opf = utf8("OEBPS/content.opf", &output);
+    let spine: Vec<&str> = opf
+        .lines()
+        .filter(|l| l.contains("<itemref"))
+        .map(|l| l.trim())
+        .collect();
+    assert_eq!(
+        spine,
+        vec![
+            "<itemref idref=\"ch00001\"/>",
+            "<itemref idref=\"ch00002\"/>",
+            "<itemref idref=\"ch00003\"/>",
+        ],
+        "spine 顺序即页面顺序"
+    );
+    assert!(
+        opf.contains("<dc:title>Docs Home</dc:title>"),
+        "书名 = 第一页 <title>"
+    );
+
+    let nav = utf8("OEBPS/nav.xhtml", &output);
+    assert!(
+        nav.contains(">Welcome</a>") && nav.contains(">Installation</a>"),
+        "{nav}"
+    );
+
+    // ch1（home）：三种链接 + rust 染色 + 相对图片
+    let ch1 = utf8("OEBPS/Text/ch00001.xhtml", &output);
+    assert!(
+        ch1.contains("href=\"ch00002.xhtml\""),
+        "相对链接 → install：{ch1}"
+    );
+    assert!(
+        ch1.contains("href=\"ch00003.xhtml#usage\""),
+        "同源绝对链接 + 锚点：{ch1}"
+    );
+    assert!(
+        ch1.contains("href=\"https://example.org/external\""),
+        "外部链接保留可点：{ch1}"
+    );
+    assert!(
+        ch1.contains("syn-source syn-rust"),
+        "language-rust 存活 → 染色"
+    );
+    assert!(
+        ch1.contains("../Images/arch.png"),
+        "相对图片以页面 URL 为基登记嵌入"
+    );
+    assert!(!ch1.contains("site footer chrome"), "root 内 footer 剔除");
+
+    // ch2（install）：上溯链接 / 未入书同源链接绝对化 / 跨源图片 / 方言
+    let ch2 = utf8("OEBPS/Text/ch00002.xhtml", &output);
+    assert!(ch2.contains("href=\"ch00001.xhtml\""), "../ 回 home：{ch2}");
+    assert!(
+        ch2.contains("href=\"https://docs.example.dev/missing-page.html\""),
+        "未入书的同源链接绝对化保留：{ch2}"
+    );
+    assert!(ch2.contains("../Images/diagram.png"), "跨源图片嵌入");
+    // bash 作用域是 source.shell.bash → 类链 syn-source syn-shell syn-bash
+    assert!(ch2.contains("syn-source syn-shell"), "bash 染色：{ch2}");
+    assert!(
+        ch2.contains("<code>plain text block without language</code>"),
+        "无 language class 的块保持纯文本：{ch2}"
+    );
+    assert!(
+        !ch2.contains("sidebar chrome") && !ch2.contains("tracking") && !ch2.contains("subscribe"),
+        "aside/script/form/button 剔除：{ch2}"
+    );
+
+    // ch3（api）：latin-1 解码 + slug 锚点目标
+    let ch3 = utf8("OEBPS/Text/ch00003.xhtml", &output);
+    assert!(ch3.contains("Référence"), "iso-8859-1 meta 解码：{ch3}");
+    assert!(ch3.contains("<h2 id=\"usage\">"), "heading id 补齐：{ch3}");
+
+    // 报告：恰 3 条 warning（dup / 非页面 / 未入书链接），无有损告警
+    let codes: BTreeSet<String> = output
+        .report
+        .warnings
+        .iter()
+        .map(|w| w.code.as_str().to_string())
+        .collect();
+    assert_eq!(
+        output.report.warnings.len(),
+        3,
+        "{:?}",
+        output.report.warnings
+    );
+    assert!(codes.contains("duplicate-source"), "{codes:?}");
+    assert!(codes.contains("page-extract-failed"), "{codes:?}");
+    assert!(codes.contains("link-unresolved"), "{codes:?}");
+    assert_eq!(output.report.stats.chapters, 3);
+    assert_eq!(output.report.stats.assets_embedded, 2);
+    assert_eq!(
+        output.report.stats.links_rewritten, 5,
+        "{:?}",
+        output.report.stats
+    );
+    assert_eq!(output.report.stats.links_unresolved, 1);
+}
+
+/// 四个站点预设各一组样本页（30-frontends.md fixture 要求）：预设链命中
+/// 正文根、chrome 剔除、language class 存活。vitepress 样本用真实的
+/// `language-ts`——syntect 默认语法集不含 TypeScript，走静默回退纯文本
+///（`unknown_language_fallback = true`），断言类名存活而非染色。
+#[test]
+fn web_preset_samples_extract() {
+    let samples = [
+        ("mkdocs", "Material for MkDocs", true),
+        ("docusaurus", "Docusaurus Docs", true),
+        ("vitepress", "VitePress Guide", false),
+        ("gitbook", "GitBook Page", true),
+    ];
+    for (name, h1, highlighted) in samples {
+        let page = web_page(
+            &format!("presets/{name}.html"),
+            &format!("https://preset.dev/{name}.html"),
+            "text/html",
+        );
+        let mut config = ResolvedConfig::default();
+        config.web.preset = Some(name.to_string());
+        let io = Io {
+            fetcher: Arc::new(MockFetcher::new()),
+            progress: Arc::new(NoProgress),
+        };
+        let output = Converter::new()
+            .convert(&Source::Pages(vec![page]), &config, &io)
+            .expect("preset conversion succeeds");
+        assert_eq!(output.report.stats.chapters, 1, "{name}");
+        assert!(
+            output.report.warnings.is_empty(),
+            "{name}: {:?}",
+            output.report.warnings
+        );
+        let ch1 = utf8("OEBPS/Text/ch00001.xhtml", &output);
+        if highlighted {
+            assert!(
+                ch1.contains("syn-source syn-"),
+                "{name}: 代码块应染色：{ch1}"
+            );
+        } else {
+            assert!(
+                ch1.contains(r#"<code class="language-ts">"#),
+                "{name}: language class 必须存活（未知语言回退纯文本）：{ch1}"
+            );
+            assert!(
+                !ch1.contains("syn-source"),
+                "{name}: ts 不在默认语法集：{ch1}"
+            );
+        }
+        assert!(!ch1.contains("chrome"), "{name}: chrome 应剔除：{ch1}");
+        assert!(ch1.contains(h1), "{name}: 章名 = 正文 h1：{ch1}");
+    }
 }
 
 fn zip_entries(output: &BuildOutput) -> Vec<(String, bool, Vec<u8>)> {
@@ -383,6 +601,16 @@ fn golden_bytes() {
             "{name} 与 golden 不一致（意图变更请 UPDATE_GOLDEN=1 重新生成并 review diff）"
         );
     }
+    // web 样书（Pages 源，无 UPDATE_GOLDEN 之外的差异面）
+    let output = convert_web();
+    let golden_path = format!("{GOLDEN}/web.epub");
+    if std::env::var("UPDATE_GOLDEN").is_ok() {
+        std::fs::write(&golden_path, &output.bytes).expect("write golden");
+    } else {
+        let golden = std::fs::read(&golden_path)
+            .unwrap_or_else(|_| panic!("golden web.epub 缺失；先运行 UPDATE_GOLDEN=1 生成"));
+        assert_eq!(output.bytes, golden, "web 与 golden 不一致");
+    }
 }
 
 /// epubcheck 验收门：jar 存在（`EPUBCHECK_JAR` 或 scripts/epubcheck.sh 的
@@ -412,6 +640,21 @@ fn epubcheck_gate() {
             String::from_utf8_lossy(&status.stdout)
         );
     }
+    // web 样书也过验收门
+    let output = convert_web();
+    let tmp = tempfile_dir().join("web.epub");
+    std::fs::write(&tmp, &output.bytes).expect("write temp epub");
+    let status = std::process::Command::new("java")
+        .arg("-jar")
+        .arg(&jar)
+        .arg(&tmp)
+        .output()
+        .expect("java available when jar exists");
+    assert!(
+        status.status.success(),
+        "epubcheck failed for web:\n{}",
+        String::from_utf8_lossy(&status.stdout)
+    );
 }
 
 fn tempfile_dir() -> std::path::PathBuf {

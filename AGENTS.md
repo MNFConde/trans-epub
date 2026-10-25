@@ -1,6 +1,6 @@
 # trans-epub 协作规则
 
-trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差异化是"编程文档保真"（构建期语法高亮、代码长行处理、mdBook 语义、链接改写）。当前状态：MVP1（散装 md，a95bd71）与 MVP2（mdBook 前端）已落地、门禁全绿；下一步 MVP3（fetch 前端）。
+trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差异化是"编程文档保真"（构建期语法高亮、代码长行处理、mdBook 语义、链接改写）。当前状态：MVP1（散装 md，a95bd71）、MVP2（mdBook 前端）与 MVP3（fetch 采集库 + web 前端 + CLI crawl）已落地、门禁全绿；下一步发布前收尾（crates.io 名称确认 + Apple Books 真机补验）。
 
 ## 阅读顺序
 

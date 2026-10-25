@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/trans-epub-contract",
     "crates/trans-epub-core",
+    "crates/trans-epub-fetch",
     "crates/trans-epub-cli",
 ]
 

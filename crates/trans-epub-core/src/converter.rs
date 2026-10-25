@@ -18,6 +18,7 @@ use trans_epub_contract::writer::{BuildOutput, BuildReport, BuildStats, Writer};
 use crate::dom::BookDom;
 use crate::frontends::md::MdFrontend;
 use crate::frontends::mdbook::MdbookFrontend;
+use crate::frontends::web::WebFrontend;
 use crate::pipeline::{AssetResolve, CodeWrap, Highlight, LinkRewrite, Pass, PassCtx};
 use crate::writer::Epub3Writer;
 
@@ -28,7 +29,7 @@ pub struct Io {
 }
 
 pub struct Converter {
-    /// 注册顺序 = probe 优先级（默认 mdbook → md → web；web 于 MVP3 加入）。
+    /// 注册顺序 = probe 优先级（默认 mdbook → md → web；web 只吃 Pages 源）。
     frontends: Vec<Box<dyn Frontend>>,
     /// 顺序 = 执行顺序（顺序契约见 20-core.md 的表）。
     passes: Vec<Box<dyn Pass>>,
@@ -42,10 +43,14 @@ impl Default for Converter {
 }
 
 impl Converter {
-    /// 默认装配：mdbook → md 前端 + 标准 pass 链 + epub3 writer。
+    /// 默认装配：mdbook → md → web 前端 + 标准 pass 链 + epub3 writer。
     pub fn new() -> Self {
         Self {
-            frontends: vec![Box::new(MdbookFrontend), Box::new(MdFrontend)],
+            frontends: vec![
+                Box::new(MdbookFrontend),
+                Box::new(MdFrontend),
+                Box::new(WebFrontend),
+            ],
             passes: vec![
                 Box::new(AssetResolve),
                 Box::new(LinkRewrite),
@@ -103,7 +108,8 @@ impl Converter {
             .collect::<Vec<_>>();
         let Some((frontend, _)) = matched.first() else {
             return Err(BuildError::Source(
-                "no frontend matched the input (mdbook / loose markdown supported)".into(),
+                "no frontend matched the input (mdbook / loose markdown / crawled pages supported)"
+                    .into(),
             ));
         };
 

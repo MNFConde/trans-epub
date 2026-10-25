@@ -1,0 +1,22 @@
+[package]
+name = "trans-epub-fetch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+globset = "0.4"
+scraper = { version = "0.29", features = ["deterministic"] }
+texting_robots = "0.2"
+trans-epub-contract = { path = "../trans-epub-contract" }
+url = { version = "2", features = ["serde"] }
+# TLS 用 native-tls（Windows=schannel，免 CMake/NASM），与 CLI 既有口径一致
+reqwest = { version = "0.13", default-features = false, features = [
+    "blocking",
+    "native-tls",
+    "charset",
+    "system-proxy",
+] }
+
+[dev-dependencies]
+trans-epub-contract = { path = "../trans-epub-contract", features = ["test-util"] }

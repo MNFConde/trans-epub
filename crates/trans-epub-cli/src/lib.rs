@@ -1,28 +1,26 @@
 //! trans-epub CLI 薄壳（docs/architecture/60-cli.md）：零业务逻辑，只做
 //! 装配与注入——参数解析 → 配置合并（TOML < front matter < flags，前两层
-//! 中的 front matter 归前端在 load 应用）→ Source 构造 → Io 接线 →
-//! dry-run / 落盘 / 报告 / 退出码。
+//! 中的 front matter 归前端在 load 应用）→ Source 构造（路径族 FsVfs /
+//! 采集族 trans-epub-fetch）→ Io 接线 → dry-run / 落盘 / 报告 / 退出码。
 //!
 //! 判断 CLI 是否越界的标准：删掉本 crate 换成 HTTP handler，逻辑能否
 //! 整体搬进服务？能，就是薄壳。
 
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use trans_epub_core::contract::config::{ResolvedConfig, WrapMode};
+use trans_epub_core::contract::config::ResolvedConfig;
 use trans_epub_core::contract::error::BuildError;
 use trans_epub_core::contract::frontend::OutlineItem;
 use trans_epub_core::contract::progress::ProgressSink;
-use trans_epub_core::contract::source::{
-    FetchError, Fetcher, FileEntry, RelPath, Source, Vfs, VfsError,
-};
+use trans_epub_core::contract::source::{FileEntry, RelPath, Source, Vfs, VfsError};
 use trans_epub_core::contract::writer::BuildReport;
 use trans_epub_core::{Converter, Io};
+use trans_epub_fetch::{DiscoverCfg, Discovered, PoliteConfig, PoliteFetcher, discover};
 use url::Url;
 
 /// 退出码约定（60-cli.md）：0 成功；1 转换致命失败或 --strict 下 warning；
@@ -35,11 +33,55 @@ pub const EXIT_USAGE: u8 = 2;
 #[command(
     name = "trans-epub",
     version,
-    about = "md/mdBook/文档站 → EPUB（mdBook 前端于 MVP2 落地）"
+    about = "md/mdBook/静态文档站 → EPUB（三前端已落地；文档站经 crawl 采集）"
 )]
 pub struct Cli {
-    /// 输入：markdown 文件或包含 markdown 的目录
-    pub path: PathBuf,
+    /// 输入：markdown 文件或包含 markdown 的目录（无子命令时）
+    pub path: Option<PathBuf>,
+    /// 通用输出/配置旗标（路径族与 crawl 共用）
+    #[command(flatten)]
+    pub common: CommonArgs,
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// 抓取静态文档站成书：URL 起始页 / sitemap.xml / URL 列表文件
+    Crawl(CrawlArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct CrawlArgs {
+    /// 起始 URL（http(s)，非 .xml 结尾）· sitemap URL（.xml 结尾）· 本地 sitemap.xml / list.txt
+    pub start: String,
+    /// BFS 深度上限（起始页为第 0 层）
+    #[arg(long, default_value_t = 3)]
+    pub depth: u32,
+    /// 页面数安全帽
+    #[arg(long, default_value_t = 500)]
+    pub max_pages: u32,
+    /// include glob（URL path 匹配，可重复）
+    #[arg(long)]
+    pub include: Vec<String>,
+    /// exclude glob（命中即丢弃，可重复）
+    #[arg(long)]
+    pub exclude: Vec<String>,
+    /// 每 host 最小请求间隔（毫秒）
+    #[arg(long, default_value_t = 1000)]
+    pub rate_ms: u64,
+    /// 不遵守 robots.txt（自负其责）
+    #[arg(long)]
+    pub ignore_robots: bool,
+    /// 正文抽取预设：mkdocs / docusaurus / vitepress / gitbook
+    #[arg(long)]
+    pub preset: Option<String>,
+    #[command(flatten)]
+    pub common: CommonArgs,
+}
+
+#[derive(Args, Debug)]
+pub struct CommonArgs {
     /// 输出 .epub 路径（默认：当前目录/{输入名}.epub）
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
@@ -76,7 +118,7 @@ pub struct Cli {
     /// 任何 warning 都视为失败
     #[arg(long)]
     pub strict: bool,
-    /// 只探测结构（Outline），不出书
+    /// 只输出探测到的页面/章节清单与顺序，不出书
     #[arg(long)]
     pub dry_run: bool,
     /// 静默：不输出进度与文本报告
@@ -110,29 +152,168 @@ pub fn run(cli: &Cli) -> u8 {
 }
 
 fn run_inner(cli: &Cli) -> Result<u8, String> {
-    if !cli.path.exists() {
-        return Err(format!("input path not found: {}", cli.path.display()));
+    match &cli.command {
+        Some(Command::Crawl(args)) => run_crawl(args),
+        None => {
+            let Some(path) = &cli.path else {
+                return Err(
+                    "input path required (or use: trans-epub crawl <start-url | sitemap.xml | list.txt>)"
+                        .into(),
+                );
+            };
+            run_convert(path, &cli.common)
+        }
     }
-    let mut config = load_config(cli.config.as_deref())?;
-    apply_flags(&mut config, cli)?;
+}
 
-    let vfs = FsVfs::new(&cli.path).map_err(|e| format!("open input: {e}"))?;
+// ---------------------------------------------------------------------------
+// 路径族：Vfs 源
+// ---------------------------------------------------------------------------
+
+fn run_convert(path: &Path, common: &CommonArgs) -> Result<u8, String> {
+    if !path.exists() {
+        return Err(format!("input path not found: {}", path.display()));
+    }
+    let mut config = load_config(common.config.as_deref())?;
+    apply_flags(&mut config, common)?;
+
+    let vfs = FsVfs::new(path).map_err(|e| format!("open input: {e}"))?;
     let source = Source::Vfs(Arc::new(vfs));
     let converter = Converter::new();
 
-    // ---- dry-run：只 probe，树状打印 Outline ----
-    if cli.dry_run {
+    if common.dry_run {
         return dry_run(&converter, &source, &config);
     }
 
-    let progress = Arc::new(TerminalProgress::new(cli.quiet));
-    let fetcher = HttpFetcher::new(config.assets.max_file_bytes);
+    let progress = Arc::new(TerminalProgress::new(common.quiet));
+    let fetcher = PoliteFetcher::with_max_bytes(config.assets.max_file_bytes);
     let io = Io {
         fetcher: Arc::new(fetcher),
         progress: progress.clone(),
     };
+    finish_convert(
+        &converter,
+        source,
+        &config,
+        common,
+        &default_output(path, common.output.as_deref()),
+        &io,
+    )
+}
 
-    match converter.convert(&source, &config, &io) {
+// ---------------------------------------------------------------------------
+// 采集族：crawl 子命令 → fetch crate 发现/抓取 → Pages 源
+// ---------------------------------------------------------------------------
+
+fn run_crawl(args: &CrawlArgs) -> Result<u8, String> {
+    let mut config = load_config(args.common.config.as_deref())?;
+    apply_flags(&mut config, &args.common)?;
+    if let Some(preset) = &args.preset {
+        config.web.preset = Some(preset.clone());
+    }
+
+    let fetcher = PoliteFetcher::new(PoliteConfig {
+        min_interval: Duration::from_millis(args.rate_ms),
+        max_bytes: config.assets.max_file_bytes,
+        respect_robots: !args.ignore_robots,
+        ..PoliteConfig::default()
+    });
+    let discover_cfg = DiscoverCfg {
+        max_depth: args.depth,
+        max_pages: args.max_pages as usize,
+        include: args.include.clone(),
+        exclude: args.exclude.clone(),
+    };
+
+    let progress = Arc::new(TerminalProgress::new(args.common.quiet));
+    progress.stage("discover");
+    let mut discovered =
+        dispatch_discovery(&fetcher, &args.start, &discover_cfg, progress.as_ref())?;
+    for w in &discovered.warnings {
+        eprintln!("trans-epub: warning [{}]: {}", w.code, w.message);
+    }
+
+    if args.common.dry_run {
+        // 发现完成后即打印清单停止（40-fetch.md 的 dry-run 语义）
+        println!(
+            "trans-epub (crawl dry-run): {} page(s) discovered, in book order:",
+            discovered.urls.len()
+        );
+        for url in &discovered.urls {
+            println!("- {url}");
+        }
+        return Ok(EXIT_OK);
+    }
+
+    // list / sitemap 只发现了 URL 清单，页面体按需抓取（BFS 已顺带抓取）
+    if discovered.pages.is_empty() && !discovered.urls.is_empty() {
+        progress.stage("fetch");
+        discovered.fetch_pages(&fetcher, &discover_cfg, Some(progress.as_ref()));
+        for w in &discovered.warnings {
+            eprintln!("trans-epub: warning [{}]: {}", w.code, w.message);
+        }
+    }
+    if discovered.pages.is_empty() {
+        return Err("no pages discovered".into());
+    }
+
+    let source = Source::Pages(std::mem::take(&mut discovered.pages));
+    let converter = Converter::new();
+    let out_name = default_output(Path::new(&args.start), args.common.output.as_deref());
+    let io = Io {
+        fetcher: Arc::new(fetcher),
+        progress: progress.clone(),
+    };
+    finish_convert(&converter, source, &config, &args.common, &out_name, &io)
+}
+
+/// 输入判别（60-cli.md）：http(s) URL 且 path 以 .xml 结尾 → 远程 sitemap；
+/// 其他 http(s) URL → BFS 起始页；本地文件按扩展名分 sitemap / list。
+fn dispatch_discovery(
+    fetcher: &PoliteFetcher,
+    start: &str,
+    cfg: &DiscoverCfg,
+    progress: &dyn ProgressSink,
+) -> Result<Discovered, String> {
+    if let Ok(url) = Url::parse(start) {
+        if url.scheme() != "http" && url.scheme() != "https" {
+            return Err(format!("unsupported URL scheme: {}", url.scheme()));
+        }
+        if url.path().ends_with(".xml") {
+            return Ok(discover::from_sitemap(fetcher, &url, Some(progress)));
+        }
+        return Ok(discover::crawl(fetcher, &url, cfg, Some(progress)));
+    }
+    let path = Path::new(start);
+    let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("xml"))
+    {
+        Ok(discover::from_sitemap_local(
+            fetcher,
+            &bytes,
+            Some(progress),
+        ))
+    } else {
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        Ok(discover::from_list(&text))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 共用尾段：convert → 落盘 / 报告 / 退出码
+// ---------------------------------------------------------------------------
+
+fn finish_convert(
+    converter: &Converter,
+    source: Source,
+    config: &ResolvedConfig,
+    common: &CommonArgs,
+    out_path: &Path,
+    io: &Io,
+) -> Result<u8, String> {
+    match converter.convert(&source, config, io) {
         Err(BuildError::Source(msg)) => {
             eprintln!("trans-epub: {msg}");
             Ok(EXIT_USAGE)
@@ -142,18 +323,17 @@ fn run_inner(cli: &Cli) -> Result<u8, String> {
             Ok(EXIT_FATAL)
         }
         Ok(output) => {
-            let out_path = default_output(&cli.path, cli.output.as_deref());
             if let Some(parent) = out_path.parent().filter(|p| !p.as_os_str().is_empty()) {
                 if let Err(e) = std::fs::create_dir_all(parent) {
                     eprintln!("trans-epub: create output dir: {e}");
                     return Ok(EXIT_FATAL);
                 }
             }
-            if let Err(e) = std::fs::write(&out_path, &output.bytes) {
+            if let Err(e) = std::fs::write(out_path, &output.bytes) {
                 eprintln!("trans-epub: write {}: {e}", out_path.display());
                 return Ok(EXIT_FATAL);
             }
-            if !cli.quiet {
+            if !common.quiet {
                 eprintln!(
                     "trans-epub: wrote {} ({} chapters, {} warnings)",
                     out_path.display(),
@@ -161,7 +341,7 @@ fn run_inner(cli: &Cli) -> Result<u8, String> {
                     output.report.warnings.len()
                 );
             }
-            match cli.report {
+            match common.report {
                 ReportArg::Json => {
                     println!(
                         "{}",
@@ -170,12 +350,12 @@ fn run_inner(cli: &Cli) -> Result<u8, String> {
                     );
                 }
                 ReportArg::Text => {
-                    if !cli.quiet {
+                    if !common.quiet {
                         eprintln!("{}", render_report_text(&output.report));
                     }
                 }
             }
-            if cli.strict && !output.report.warnings.is_empty() {
+            if common.strict && !output.report.warnings.is_empty() {
                 return Ok(EXIT_FATAL);
             }
             Ok(EXIT_OK)
@@ -186,7 +366,9 @@ fn run_inner(cli: &Cli) -> Result<u8, String> {
 fn dry_run(converter: &Converter, source: &Source, config: &ResolvedConfig) -> Result<u8, String> {
     let matched = converter.probe(source, config);
     let Some((name, outline)) = matched.first() else {
-        eprintln!("trans-epub: no frontend matched the input (mdbook / loose markdown supported)");
+        eprintln!(
+            "trans-epub: no frontend matched the input (mdbook / loose markdown / crawled pages supported)"
+        );
         return Ok(EXIT_USAGE);
     };
     println!(
@@ -224,29 +406,29 @@ fn load_config(path: Option<&Path>) -> Result<ResolvedConfig, String> {
     }
 }
 
-fn apply_flags(config: &mut ResolvedConfig, cli: &Cli) -> Result<(), String> {
-    if let Some(title) = &cli.title {
+fn apply_flags(config: &mut ResolvedConfig, common: &CommonArgs) -> Result<(), String> {
+    if let Some(title) = &common.title {
         config.book.title = Some(title.clone());
     }
-    if !cli.authors.is_empty() {
-        config.book.authors = cli.authors.clone();
+    if !common.authors.is_empty() {
+        config.book.authors = common.authors.clone();
     }
-    if let Some(lang) = &cli.lang {
+    if let Some(lang) = &common.lang {
         config.book.language = Some(lang.clone());
     }
-    if let Some(cover) = &cli.cover {
+    if let Some(cover) = &common.cover {
         config.book.cover = Some(cover.clone());
     }
-    if cli.no_remote_images {
+    if common.no_remote_images {
         config.assets.remote = false;
     }
-    config.wrap.mode = match cli.wrap {
-        WrapArg::PreWrap => WrapMode::PreWrap,
-        WrapArg::Hard => WrapMode::Hard {
-            width: cli.wrap_width,
+    config.wrap.mode = match common.wrap {
+        WrapArg::PreWrap => trans_epub_core::contract::config::WrapMode::PreWrap,
+        WrapArg::Hard => trans_epub_core::contract::config::WrapMode::Hard {
+            width: common.wrap_width,
         },
     };
-    if let Some(css_path) = &cli.extra_css {
+    if let Some(css_path) = &common.extra_css {
         config.theme.extra_css = std::fs::read_to_string(css_path)
             .map_err(|e| format!("read extra css {}: {e}", css_path.display()))?;
     }
@@ -356,82 +538,6 @@ impl Vfs for FsVfs {
             });
         }
         Ok(out)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 最小 Fetcher（reqwest 薄包装；MVP3 平移进 trans-epub-fetch）
-// ---------------------------------------------------------------------------
-
-pub struct HttpFetcher {
-    client: reqwest::blocking::Client,
-    max_bytes: u64,
-}
-
-impl HttpFetcher {
-    pub fn new(max_bytes: u64) -> Self {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(concat!("trans-epub/", env!("CARGO_PKG_VERSION")))
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_default();
-        Self { client, max_bytes }
-    }
-}
-
-impl Fetcher for HttpFetcher {
-    fn fetch(
-        &self,
-        url: &Url,
-    ) -> Result<trans_epub_core::contract::source::FetchedPage, FetchError> {
-        if url.scheme() != "http" && url.scheme() != "https" {
-            return Err(FetchError::Denied(format!(
-                "scheme not allowed: {}",
-                url.scheme()
-            )));
-        }
-        let mut response = self
-            .client
-            .get(url.clone())
-            .send()
-            .map_err(|e| FetchError::Network(e.to_string()))?;
-        let status = response.status().as_u16();
-        if !response.status().is_success() {
-            return Err(FetchError::HttpStatus {
-                status,
-                url: url.to_string(),
-            });
-        }
-        if let Some(len) = response.content_length() {
-            if len > self.max_bytes {
-                return Err(FetchError::TooLarge(format!(
-                    "{len} bytes (limit {}) for {url}",
-                    self.max_bytes
-                )));
-            }
-        }
-        let content_type = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("application/octet-stream")
-            .to_string();
-        let mut body = Vec::new();
-        let mut limited = (&mut response).take(self.max_bytes + 1);
-        limited
-            .read_to_end(&mut body)
-            .map_err(|e| FetchError::Network(e.to_string()))?;
-        if body.len() as u64 > self.max_bytes {
-            return Err(FetchError::TooLarge(format!(
-                "over {} bytes for {url}",
-                self.max_bytes
-            )));
-        }
-        Ok(trans_epub_core::contract::source::FetchedPage::from_bytes(
-            url.clone(),
-            body,
-            content_type,
-        ))
     }
 }
 
@@ -552,10 +658,59 @@ mod tests {
             "--dry-run",
         ])
         .expect("valid flags");
-        assert_eq!(cli.output, Some(PathBuf::from("out.epub")));
-        assert_eq!(cli.authors, vec!["A", "B"]);
-        assert_eq!(cli.wrap, WrapArg::Hard);
-        assert!(cli.strict && cli.dry_run && cli.no_remote_images);
+        assert_eq!(cli.common.output, Some(PathBuf::from("out.epub")));
+        assert_eq!(cli.common.authors, vec!["A", "B"]);
+        assert_eq!(cli.common.wrap, WrapArg::Hard);
+        assert!(cli.common.strict && cli.common.dry_run && cli.common.no_remote_images);
+        assert!(cli.path.as_deref() == Some(Path::new("book/")));
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn crawl_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "trans-epub",
+            "crawl",
+            "https://docs.example.dev/",
+            "--depth",
+            "2",
+            "--max-pages",
+            "50",
+            "--include",
+            "guide/*",
+            "--exclude",
+            "blog/*",
+            "--rate-ms",
+            "500",
+            "--ignore-robots",
+            "--preset",
+            "mkdocs",
+            "--title",
+            "Site Book",
+        ])
+        .expect("valid crawl flags");
+        let Some(Command::Crawl(args)) = &cli.command else {
+            panic!("crawl 子命令必须解析");
+        };
+        assert_eq!(args.start, "https://docs.example.dev/");
+        assert_eq!(args.depth, 2);
+        assert_eq!(args.max_pages, 50);
+        assert_eq!(args.include, vec!["guide/*"]);
+        assert_eq!(args.exclude, vec!["blog/*"]);
+        assert_eq!(args.rate_ms, 500);
+        assert!(args.ignore_robots);
+        assert_eq!(args.preset.as_deref(), Some("mkdocs"));
+        assert_eq!(args.common.title.as_deref(), Some("Site Book"));
+    }
+
+    #[test]
+    fn sitemap_url_is_recognized_in_dispatch() {
+        // dispatch 判别逻辑在 dispatch_discovery 内联；这里验证 URL 形态判别
+        // 依赖的规则本身（.xml 后缀 → sitemap），完整链路见 e2e 测试
+        let url = Url::parse("https://a.dev/sitemap.xml").unwrap();
+        assert!(url.path().ends_with(".xml"));
+        let url = Url::parse("https://a.dev/guide/").unwrap();
+        assert!(!url.path().ends_with(".xml"));
     }
 
     #[test]
@@ -574,10 +729,13 @@ mod tests {
         .unwrap();
         let mut config = ResolvedConfig::default();
         config.book.title = Some("From Toml".into());
-        apply_flags(&mut config, &cli).unwrap();
+        apply_flags(&mut config, &cli.common).unwrap();
         assert_eq!(config.book.title.as_deref(), Some("From Flag"));
         assert!(!config.assets.remote);
-        assert_eq!(config.wrap.mode, WrapMode::Hard { width: 72 });
+        assert_eq!(
+            config.wrap.mode,
+            trans_epub_core::contract::config::WrapMode::Hard { width: 72 }
+        );
     }
 
     #[test]

@@ -115,7 +115,7 @@ pub struct PassCtx<'a> {
 | # | pass | 职责 | 前置约束 | 配置 |
 |---|---|---|---|---|
 | 1 | asset-resolve | 把所有 Asset 解析为可嵌入字节：`Remote` 经 Fetcher 拉取（离线模式直接降级）、类型识别（魔数/扩展名，不识别→warning+Missing）、单文件/总量上限校验；本地/data: 资产已由前端在 load 读入为 `Owned`，此处只校验 | 章节与资产集合已定（load 后即冻结） | AssetsCfg |
-| 2 | link-rewrite | 解析全部 `href`/`src` → 相对章节 source 解析为 `SourceKey` → 命中章节则改写为 EPUB 路径，命中资产则改写为资产路径；**锚点校验**（原样 → slug 归一 → 落空则去 fragment + warning，杜绝悬空锚点过不了 epubcheck）；未解析→warning+降级（内部链接转纯文本，图片转 alt 文本占位）；外部链接原样保留 | 必须在 asset-resolve 后（Missing 资产影响降级决策）；依赖"章节集合冻结"不变量 | — |
+| 2 | link-rewrite | 解析全部 `href`/`src` → 按章节 source 所在世界解析为 `SourceKey`（Path：相对路径；Url：以页面 URL join，**同源绝对链接也算书内候选**）→ 命中章节则改写为 EPUB 路径，命中资产则改写为资产路径；**锚点校验**（原样 → slug 归一 → 落空则去 fragment + warning，杜绝悬空锚点过不了 epubcheck）；未解析→warning+降级（Path 世界内部链接转纯文本、图片转 alt 文本占位；Url 世界未入书的同源链接**绝对化保留**，站外仍可点）；外部链接原样保留 | 必须在 asset-resolve 后（Missing 资产影响降级决策）；依赖"章节集合冻结"不变量 | — |
 | 3 | highlight | 找出未染色的 `pre > code.language-x`（已有元素子节点视为外部已染色，跳过），syntect 渲染为 `syn-` 前缀 classed span（构建期染色，不依赖阅读器）；未知语言按配置回退纯文本或记 warning | 与 1/2 无属性冲突；必须在 code-wrap 前 | HighlightCfg |
 | 4 | code-wrap | 可选的构建期硬折行（列宽可配，按字符计），保底专治不理 pre-wrap 的阅读器 | 必须在 highlight 后（对已染色 span 里的文本节点折行，计数跨 span 连续） | WrapCfg |
 
@@ -164,7 +164,7 @@ EPUB 内部路径规则（章节文件名 `Text/ch00001.xhtml`、资产按类型
 
 ## 测试策略
 
-- **单测**：pass 用 mock Vfs / mock Fetcher（契约 trait 的内存实现，`trans-epub-contract` 的 `test-util` feature，位于 `contract::testing`）；link-rewrite 的解析/规范化用表驱动用例覆盖边角。
-- **fixtures**（`tests/fixtures/`）：md（平铺+README/数字前缀+GFM 全家桶/断链缺图/嵌套树/front matter order/单文件）；mdbook（3 层嵌套 SUMMARY+part+draft+include 全形态+rustdoc 锚点+hide+缺失目标+hidden 章，MVP2 落地）。web 的 fixtures 随 MVP3 补。
-- **golden**（`tests/golden/`）：端到端产物**字节级比对**（依赖确定性；`UPDATE_GOLDEN=1` 重新生成并 review diff）；比对失败时 diff 解包后的 XHTML 快照定位。已有 4 本：flat / tree / single / mdbook。
+- **单测**：pass 用 mock Vfs / mock Fetcher（契约 trait 的内存实现，`trans-epub-contract` 的 `test-util` feature，位于 `contract::testing`）；link-rewrite 的解析/规范化用表驱动用例覆盖边角（含 Url 世界的 join / 同源 / 协议相对表）。
+- **fixtures**（`tests/fixtures/`）：md（平铺+README/数字前缀+GFM 全家桶/断链缺图/嵌套树/front matter order/单文件）；mdbook（3 层嵌套 SUMMARY+part+draft+include 全形态+rustdoc 锚点+hide+缺失目标+hidden 章，MVP2 落地）；web（默认链脏 HTML 边角样书 + 四预设样本页 `web/presets/`，MVP3 落地）。
+- **golden**（`tests/golden/`）：端到端产物**字节级比对**（依赖确定性；`UPDATE_GOLDEN=1` 重新生成并 review diff）；比对失败时 diff 解包后的 XHTML 快照定位。已有 5 本：flat / tree / single / mdbook / web。
 - **验收门**：epubcheck 全绿（`scripts/epubcheck.sh` + 环境可用的门测试）；真机抽验清单（Koodo / Apple Books / KOReader）见 docs/testing/manual-checklist.md。

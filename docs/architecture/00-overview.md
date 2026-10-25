@@ -5,7 +5,7 @@ summary: "trans-epub 整体架构总览：四 crate 拓扑（contract 契约 / c
 tags: [trans-epub, architecture, overview, crate-topology]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 related: ["../requirements.md"]
 authoring_mode: ai_generated
 ---
@@ -69,7 +69,7 @@ authoring_mode: ai_generated
 |---|---|---|
 | trans-epub-contract | 全部跨 crate 类型与 trait：Source/Vfs/FetchedPage/Fetcher/IR/Frontend/Writer/ProgressSink/BuildError/ResolvedConfig | 仅 serde / url / thiserror 一级 |
 | trans-epub-core | 转换内核：三前端实现、pass 链、EPUB 写出器、Converter 门面 | comrak / syntect / scraper / zip |
-| trans-epub-fetch | 默认 Fetcher 实现 + 页面发现（robots、限速、sitemap、同域递归） | reqwest / textview-robots 级 |
+| trans-epub-fetch | 默认 Fetcher 实现（PoliteFetcher：robots / 限速 / 重试 / 大小上限）+ 页面发现三机制（URL 列表 / sitemap / 同域 BFS） | reqwest / texting_robots / scraper / globset |
 | trans-epub-cli | 壳：参数解析、配置合并、I/O 注入、落盘、报告呈现 | clap / indicatif |
 
 ### 依赖红线（架构不变量）
@@ -108,7 +108,7 @@ sequenceDiagram
 关键交互约定：
 
 - **probe 与 load 分离**。probe 只做识别与章节清单（Outline），不做内容转换——dry-run、GUI 结构预览、服务的"先确认目录再出书"都只消费 Outline。load 才产出完整 BookDraft。
-- **前端优先级 = 注册顺序**。默认顺序 mdbook → md（探测到 book.toml / src/SUMMARY.md 即由 mdbook 接管）；web 前端只吃 `Source::Pages`，与另两者天然无冲突。多个前端命中是正常现象，取第一个，其余作为信息呈现。
+- **前端优先级 = 注册顺序**。默认顺序 mdbook → md → web（三前端全量落地：探测到 book.toml / src/SUMMARY.md 即由 mdbook 接管）；md / mdbook 只吃 Vfs 源、web 只吃 `Source::Pages`，天然无冲突。多个前端命中是正常现象，取第一个，其余作为信息呈现。
 - **pass 链顺序是契约的一部分**（见 20-core.md 的顺序表），新 pass 必须声明插入位置并更新该表。
 - **失败双轨**。致命错误（源不可读、无前端可识别、用户取消）走 `Result::Err` 中止；单项失败（某图片拉不下来、某链接解析不了）记 warning 继续跑，结尾随 BuildReport 汇总——服务需要机器可读的报告。
 
@@ -143,6 +143,7 @@ core 从第一天按服务友好的姿势写。服务化 = 换壳，core/fetch/c
 
 - ✅ 2026-10-24：crate 改名完成（mdepub-core / mdepub-cli → trans-epub-core / trans-epub-cli，git mv 保留历史）；trans-epub-contract 落地（契约类型 + 单元测试，原 ir.rs 迁入并删除）。
 - ✅ 2026-10-24：**MVP1 主线落地**——md 前端（六规则探测 + comrak 方言 + heading id + 资产登记）、pipeline 四 pass（asset-resolve / link-rewrite 含锚点校验 / highlight / code-wrap）、converter 门面、epub3 writer（确定性 zip + CSS 主题亮暗两套）、CLI 最小闭环（配置合并 / dry-run / 报告 / 退出码 / 内置 Fetcher）、质量设施（contract test-util mock、3 本 golden 样书字节级回归、epubcheck 门全绿、真机抽验清单）。验收口径达成：epubcheck 5.2.1 对三本 golden **零错误零警告**。
-- trans-epub-fetch 于 MVP3 成型；MVP1 期间 CLI 内置最小 Fetcher（reqwest blocking + native-tls），接口即契约的 Fetcher，届时整体平移进 fetch crate。
+- ✅ 2026-10-25：MVP1 真机抽验通过（Readest / SumatraPDF）；MVP2 mdBook 前端落地（SUMMARY 自解析不拍平 + 指令展开，契约零变更）。
+- ✅ 2026-10-25：**MVP3 落地**——trans-epub-fetch crate（PoliteFetcher + 页面发现三机制）、core web 前端（选择器预设 + language class 存活 + 编码链）、link-rewrite 的 Url 世界解析、CLI crawl 子命令（CLI 内置 Fetcher 已按计划平移进 fetch crate）。golden 第 5 本（web），epubcheck 全绿。
 - crates.io 名称可用性确认（trans-epub 及各 crate 名，需求文档遗留的 Open Question）。
 - 本目录文档与代码同步演进：**契约变更须先改 10-contracts.md 再动代码**，golden 样书随之更新。
