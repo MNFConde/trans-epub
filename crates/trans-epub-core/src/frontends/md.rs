@@ -72,7 +72,7 @@ impl Frontend for MdFrontend {
         if yields_to_mdbook(&entries) {
             return Err(BuildError::Source(
                 "looks like an mdBook project (book.toml / SUMMARY.md); \
-                 mdbook frontend lands in MVP2"
+                 the mdbook frontend should have taken it"
                     .into(),
             ));
         }
@@ -652,7 +652,8 @@ fn load_chapter(
     Ok(Some(id))
 }
 
-fn render_markdown(md: &str, cfg: &MarkdownCfg) -> String {
+/// comrak 渲染（mdbook 前端共用：三种来源进 pipeline 时同型，义务清单第 6 条）。
+pub(crate) fn render_markdown(md: &str, cfg: &MarkdownCfg) -> String {
     let mut options = comrak::Options::default();
     options.extension.table = cfg.gfm;
     options.extension.strikethrough = cfg.gfm;
@@ -681,7 +682,12 @@ fn sel_media() -> &'static Selector {
 
 /// 渲染后处理（前端义务 2/3）：heading 补稳定 id（comrak 的 GitHub 式
 /// slug + 去重）；img/source 的 src 登记为资产。**不改写任何 href/src**。
-fn post_process(html_str: &str, base: &RelPath, book: &mut BookDraft, vfs: &dyn Vfs) -> String {
+pub(crate) fn post_process(
+    html_str: &str,
+    base: &RelPath,
+    book: &mut BookDraft,
+    vfs: &dyn Vfs,
+) -> String {
     let mut html = Html::parse_fragment(html_str);
     let mut anchorizer = Anchorizer::new();
     for h_id in dom::select_ids(&html, sel_headings()) {
@@ -757,7 +763,7 @@ fn register_asset(base: &RelPath, src: &str, book: &mut BookDraft, vfs: &dyn Vfs
     book.assets.insert(key.clone(), Asset { source: key, data });
 }
 
-fn decode_data_uri(src: &str) -> Option<Vec<u8>> {
+pub(crate) fn decode_data_uri(src: &str) -> Option<Vec<u8>> {
     let data_url = data_url::DataUrl::process(src).ok()?;
     let (bytes, _) = data_url.decode_to_vec().ok()?;
     Some(bytes)
@@ -801,7 +807,8 @@ fn assemble_meta(
 }
 
 /// 封面（用户供图，需求定稿）：配置路径相对源根；URL/data: 也接受。
-fn register_cover(vfs: &dyn Vfs, config: &ResolvedConfig, book: &mut BookDraft) {
+/// （mdbook 前端共用：封面是输出层能力，与源形态无关。）
+pub(crate) fn register_cover(vfs: &dyn Vfs, config: &ResolvedConfig, book: &mut BookDraft) {
     let Some(cover) = config.book.cover.as_ref().filter(|c| !c.is_empty()) else {
         return;
     };

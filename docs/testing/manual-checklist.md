@@ -1,11 +1,11 @@
 ---
 type: testing
 status: active
-summary: "trans-epub 真机抽验清单：MVP1 起随每次大改动抽验；主力 Koodo Reader，Apple Books / KOReader 各一；检查点覆盖代码高亮亮暗切换、长行折行、嵌套目录跳转、图片显示、脚注与 admonition 渲染、封面"
+summary: "trans-epub 真机抽验清单：MVP1 起随每次大改动抽验；主力 Koodo Reader，Apple Books / KOReader 各一；检查点覆盖代码高亮亮暗切换、长行折行、嵌套目录跳转、图片显示、脚注与 admonition 渲染、封面、mdBook 源结构"
 tags: [trans-epub, testing, manual-checklist, epub-readers]
 contains: [checklist]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 related: ["../requirements.md", "../architecture/50-writer.md"]
 authoring_mode: ai_generated
 ---
@@ -28,6 +28,7 @@ epubcheck 只能保证结构合法，"在现代 EPUB3 阅读器上真正可读"�
 ```bash
 cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/flat -o flat.epub
 cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/tree -o tree.epub
+cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/mdbook -o mdbook.epub
 ```
 
 ## 检查点
@@ -65,6 +66,16 @@ cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/tree -o tre
 - [ ] 任务列表复选框显示且不歪
 - [ ] 脚注可跳转、可回跳（flat/02-footnotes）
 - [ ] admonition 色块（NOTE 蓝 / WARNING 黄）亮暗两套下都可读
+
+### mdBook 源（MVP2，用 mdbook 样书）
+
+- [ ] part 分组在 nav 中显示为纯标题（Part One / Part Two，不可点）
+- [ ] 章名取 SUMMARY 链接文本（Chapter 1，而非文件内 h1 差异）
+- [ ] `{{#include}}` 展开的代码块完整且染色（hello.rs 锚点区间 / lines.rs 行区间）
+- [ ] `{{#rustdoc_include}}` 代码块首行有 `// src/...:N-M` 来源注释
+- [ ] `{{#playground}}` 折为代码块 + "playground source" 文字（断链降级，无死链点击）
+- [ ] draft 章（Draft chapter）与未列出的 hidden.md 不出现在目录与正文
+- [ ] 缺失 include 与未知指令以原文可见（appendix 章内可见指令文本）
 
 ### 元数据与基础
 

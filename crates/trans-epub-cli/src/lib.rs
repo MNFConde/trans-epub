@@ -35,7 +35,7 @@ pub const EXIT_USAGE: u8 = 2;
 #[command(
     name = "trans-epub",
     version,
-    about = "md/文档站 → EPUB（MVP1：散装 markdown）"
+    about = "md/mdBook/文档站 → EPUB（mdBook 前端于 MVP2 落地）"
 )]
 pub struct Cli {
     /// 输入：markdown 文件或包含 markdown 的目录
@@ -186,7 +186,7 @@ fn run_inner(cli: &Cli) -> Result<u8, String> {
 fn dry_run(converter: &Converter, source: &Source, config: &ResolvedConfig) -> Result<u8, String> {
     let matched = converter.probe(source, config);
     let Some((name, outline)) = matched.first() else {
-        eprintln!("trans-epub: no frontend matched the input (MVP1: loose markdown only)");
+        eprintln!("trans-epub: no frontend matched the input (mdbook / loose markdown supported)");
         return Ok(EXIT_USAGE);
     };
     println!(

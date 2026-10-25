@@ -5,7 +5,7 @@ summary: "trans-epub 三前端设计：md（结构探测六规则+声明覆盖+c
 tags: [trans-epub, architecture, frontend, md, mdbook, web, comrak]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 related: ["../requirements.md", "10-contracts.md", "20-core.md"]
 authoring_mode: ai_generated
 ---
@@ -41,28 +41,29 @@ probe 只看文件名与目录形态（廉价），规则按优先级：
 - **资产登记**：本地图片/媒体（相对路径，以章节路径为基解析）→ 由 Vfs 读入为 `AssetData::Owned`（本地读取发生在 load——pass 不再读 Vfs）；`http(s)` 图片 → `AssetData::Remote(url)`（下载归 asset-resolve pass，前端不抓）；`data:` URI → Owned（解码）。非 md 文件不进章节。
 - front matter 的 `title` 优先于文件名做章名；单文件书 / 根 README 的 FM title 兜底书名（优先于配置文件的 book.title）。
 
-## mdbook 前端（MVP2）
+## mdbook 前端（MVP2，已落地）
 
 **路线（需求定稿决策）**：吃 `src/` 原始文件，自解析 `SUMMARY.md`，不拍平层级——不吃 build 产物 HTML（那里代码未染色、语义已损）。
 
 ### probe / 结构
 
-- 识别：`book.toml` + `src/SUMMARY.md`（宽松：有 SUMMARY.md 即可，book.toml 缺省也认）。
-- SUMMARY 的 link 文本做章名（优先于文件内 h1）；嵌套列表 → toc 嵌套；`# Part 标题` → `TocItem.chapter = None` 的分组节点；`---` 分隔线忽略；draft 章（无链接或标记）跳过并 warning。
-- `book.toml` 里可收割的元数据（title/authors/language）进 BookMeta 兜底值。
+- 识别：`src/SUMMARY.md`（宽松：book.toml 缺省也认；src 根默认 `src`、可被 `[book].src` 覆盖；src 根无 SUMMARY 时回退根 `SUMMARY.md`；book.toml 单独存在不命中——mdBook 本体没 SUMMARY 也构建不了）。
+- SUMMARY 的 link 文本做章名（优先于文件内 h1，h1 保留在正文）；嵌套列表 → toc 嵌套；任意级别 heading → `TocItem.chapter = None` 的 part 分组节点（首个 "Summary" 惯例标题忽略）；`---` 分隔线忽略；无链接叶子列表项 = draft（跳过 + warning；`skip_drafts = false` 时保留为分组节点）；无链接但带子列表的项 = 子分组标题（mdBook 语义，不是 draft）；顶层裸链接（prefix/suffix chapter）为顶层章，不卷进上一个 part。
+- SUMMARY 未列出的文件（hidden 章）不进书、不告警——mdBook 本就只构建 SUMMARY 所列内容。
+- `book.toml` 里可收割的元数据（title/authors/language/description）属**源内元数据**，优先于 `BookMetaCfg` 配置兜底（10-contracts.md 元数据优先级）。坏 TOML → warning + 按无 book.toml 处理。
 
 ### load：指令展开（对齐 mdbook 语义）
 
 | 指令 | 行为 | 备注 |
 |---|---|---|
-| `{{#include path}}` | 文件内容内联 | 支持 mdbook 的区间语法：`:10`、`:10:20`、`:regex` |
-| `{{#rustdoc_include path:anchor}}` | 内联并生成行号锚点注释 | anchor 形式 `struct:Foo` / `lines:10-20` |
-| `{{#playground path}}` | 首期折为代码块 + 指向原文件的链接 | 语义对齐 mdbook 的可编辑体验取舍 |
-| `{{#hide}}` | 标记行不进产物 | 行级处理 |
-| draft / hidden 章节 | 跳过 | |
+| `{{#include path}}` | 文件内容内联 | 区间语法（1-based 含端点）：`:N` = 第 N 行到文件尾、`:N:M` = N..=M、`:name` = `// ANCHOR: name` … `// ANCHOR_END: name` 之间（剥锚点行）；区间端点亦可为锚点名 |
+| `{{#rustdoc_include path:anchor}}` | 内联并生成行号锚点注释（`// path:N-M`） | anchor 形式 `struct:Foo` / `lines:10-20`（item 定义行到闭合 `}` 行） |
+| `{{#playground path}}` | 首期折为代码块 + 指向原文件的相对链接 | `playground_embed = true` 则纯内嵌；链接按统一断链语义降级 |
+| `{{#hide}}` | 标记行不进产物 | 行级处理（删除所在行） |
+| draft / hidden 章节 | 跳过 | draft 记 warning；hidden 静默 |
 | 其他指令（`{{#if}}` 等） | `DirectiveUnresolved` warning + 原文保留 | 保守可见，不做静默丢弃 |
 
-include 的 path 以 `src/` 为根经 RelPath 校验（防穿越）；文件缺失 → warning + 原文保留。
+include 的 path 以 src 根（SUMMARY 所在目录）为基经 RelPath 校验（防穿越）；文件缺失 / 区间落空 → warning + 原文保留；展开不递归（目标内的指令保留原文，与 mdBook 一致）。指令是 markdown 渲染前的**文本级替换**——`{{#include}}` 落在作者已写好的 fenced code block 里，语言由外层 fence 决定。
 
 ## web 前端：静态文档站（MVP3）
 

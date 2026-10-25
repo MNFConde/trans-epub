@@ -30,7 +30,7 @@ trans-epub 项目文档索引。所有文档为规划稿，随实现推进持续
 | [architecture/00-overview.md](architecture/00-overview.md) | 架构总纲：四 crate 拓扑、依赖红线、端到端流程、其余文档索引 | 理解整体结构时 |
 | [architecture/10-contracts.md](architecture/10-contracts.md) | 契约篇：公共类型/trait 契约——**变更须文档先行于代码** | 改接口/加模块前 |
 | [architecture/20-core.md](architecture/20-core.md) | 转换内核：DOM 策略、四 pass 流水线、纯净红线 | 改 core 前 |
-| [architecture/30-frontends.md](architecture/30-frontends.md) | 源归一前端：md 探测六规则、comrak 方言（mdbook/web 后续） | 改前端前 |
+| [architecture/30-frontends.md](architecture/30-frontends.md) | 源归一前端：md 探测六规则、mdBook SUMMARY/指令展开（均已落地）、comrak 方言 | 改前端前 |
 | [architecture/40-fetch.md](architecture/40-fetch.md) | 获取库（MVP3 预留） | 规划抓取功能时 |
 | [architecture/50-writer.md](architecture/50-writer.md) | EPUB3 写出器：确定性 zip、nav/opf/封面、CSS 主题 | 改 writer 前 |
 | [architecture/60-cli.md](architecture/60-cli.md) | CLI 薄壳：命令面、配置合并、FsVfs/Fetcher | 改 CLI 前 |
