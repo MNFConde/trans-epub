@@ -196,8 +196,9 @@ impl PoliteFetcher {
         }
     }
 
-    /// 单次 GET：状态码 / Content-Length / 流式大小上限检查；不重试不限速。
-    fn raw_get(&self, url: &Url) -> Result<RawPage, FetchError> {
+    /// 单次 GET（限额可指定）：状态码 / Content-Length / 流式大小上限
+    /// 检查；不重试不限速。
+    fn raw_get_limited(&self, url: &Url, max_bytes: u64) -> Result<RawPage, FetchError> {
         let mut response = self
             .client
             .get(url.clone())
@@ -211,10 +212,9 @@ impl PoliteFetcher {
             });
         }
         if let Some(len) = response.content_length() {
-            if len > self.config.max_bytes {
+            if len > max_bytes {
                 return Err(FetchError::TooLarge(format!(
-                    "{len} bytes (limit {}) for {url}",
-                    self.config.max_bytes
+                    "{len} bytes (limit {max_bytes}) for {url}"
                 )));
             }
         }
@@ -225,14 +225,13 @@ impl PoliteFetcher {
             .unwrap_or("application/octet-stream")
             .to_string();
         let mut body = Vec::new();
-        let mut limited = (&mut response).take(self.config.max_bytes + 1);
+        let mut limited = (&mut response).take(max_bytes + 1);
         limited
             .read_to_end(&mut body)
             .map_err(|e| FetchError::Network(e.to_string()))?;
-        if body.len() as u64 > self.config.max_bytes {
+        if body.len() as u64 > max_bytes {
             return Err(FetchError::TooLarge(format!(
-                "over {} bytes for {url}",
-                self.config.max_bytes
+                "over {max_bytes} bytes for {url}"
             )));
         }
         Ok(RawPage {
@@ -240,6 +239,11 @@ impl PoliteFetcher {
             body,
             content_type,
         })
+    }
+
+    /// 单次 GET：状态码 / Content-Length / 流式大小上限检查；不重试不限速。
+    fn raw_get(&self, url: &Url) -> Result<RawPage, FetchError> {
+        self.raw_get_limited(url, self.config.max_bytes)
     }
 }
 
@@ -280,6 +284,62 @@ impl Fetcher for PoliteFetcher {
                 }
                 Err(err @ (FetchError::Denied(_) | FetchError::TooLarge(_))) => return Err(err),
                 Err(err) => last_err = Some(err), // 5xx / 网络错误 → 重试
+            }
+        }
+        Err(last_err.unwrap_or_else(|| FetchError::Network("no attempt made".into())))
+    }
+
+    /// 覆写契约默认实现：用户点名单资源跳过 robots（见
+    /// [`PoliteFetcher::fetch_direct_impl`]）。`max_bytes` 显式上限
+    /// 取代配置默认（钉版字体 zip ~140MB 远超常规资产限额）。
+    fn fetch_direct(&self, url: &Url, max_bytes: Option<u64>) -> Result<FetchedPage, FetchError> {
+        self.fetch_direct_impl(url, max_bytes)
+    }
+}
+
+impl PoliteFetcher {
+    /// 用户明确指定的单资源获取（[`Fetcher::fetch_direct`] 的覆写）：
+    /// 跳过 robots——robots 管的是"爬虫发现式抓取"，用户点名的 URL
+    /// （封面图 / 钉版字体）不属此类（github.com robots 禁 release
+    /// 资产路径曾致 exact 字体下载被误拒，2026-10）。限速与重试语义
+    /// 与 [`Fetcher::fetch`] 一致。
+    fn fetch_direct_impl(
+        &self,
+        url: &Url,
+        max_bytes: Option<u64>,
+    ) -> Result<FetchedPage, FetchError> {
+        if url.scheme() != "http" && url.scheme() != "https" {
+            return Err(FetchError::Denied(format!(
+                "scheme not allowed: {}",
+                url.scheme()
+            )));
+        }
+        let host = Self::host_key(url);
+        let limit = max_bytes.unwrap_or(self.config.max_bytes);
+        let attempts = self.config.retries + 1;
+        let mut last_err = None;
+        for attempt in 1..=attempts {
+            if attempt > 1 {
+                std::thread::sleep(self.config.retry_backoff * attempt);
+            }
+            self.throttle(&host);
+            match self.raw_get_limited(url, limit) {
+                Ok(page) => {
+                    let mut final_url = page.url.clone();
+                    final_url.set_fragment(None);
+                    return Ok(FetchedPage::from_bytes(
+                        final_url,
+                        page.body,
+                        page.content_type,
+                    ));
+                }
+                Err(err @ FetchError::HttpStatus { status, .. })
+                    if !(500..600).contains(&status) =>
+                {
+                    return Err(err);
+                }
+                Err(err @ (FetchError::Denied(_) | FetchError::TooLarge(_))) => return Err(err),
+                Err(err) => last_err = Some(err),
             }
         }
         Err(last_err.unwrap_or_else(|| FetchError::Network("no attempt made".into())))

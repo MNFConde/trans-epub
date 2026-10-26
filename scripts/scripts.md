@@ -7,6 +7,7 @@
 | 脚本 | 用途 | 用法 |
 |---|---|---|
 | [epubcheck.sh](epubcheck.sh) | 下载/复用 epubcheck 5.2.1，校验三个 golden epub（产物验收·档一） | `bash scripts/epubcheck.sh`（依赖 java；`EPUBCHECK_JAR` 可指定本地 jar） |
+| [gen-font-subset.py](gen-font-subset.py) | 再生成内置字体预子集资产（Maple Mono CN v7.9 → 8105 字 + 编程文档字符，改名 TransEpub Mono；OFL-1.1 义务） | `uv run --with fonttools python scripts/gen-font-subset.py --input <MapleMono-CN-Regular.ttf> --hanzi <8105字表.txt> --output crates/trans-epub-core/assets/fonts/TransEpubMono-Regular.subset.ttf`（一次性/再生成，非门禁；溯源见同目录 NOTICE.md） |
 | [check-links.py](check-links.py) | docs/（+cairn/）链接存在性与锚点一致性校验：递归含子域，跳过存档目录与 `{{…}}` 模板令牌 | `python scripts/check-links.py`（文档门禁） |
 | [check-frontmatter.py](check-frontmatter.py) | docs/ frontmatter 必填 4 项（type/status/summary/updated）与 status 枚举校验 | `python scripts/check-frontmatter.py`（文档门禁） |
 | [check-markers.py](check-markers.py) | 方案状态标记校验：行内简记=链接形、块记=小标题+callout 结构 | `python scripts/check-markers.py`（文档门禁） |

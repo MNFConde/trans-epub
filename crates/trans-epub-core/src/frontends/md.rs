@@ -424,6 +424,26 @@ fn prettify(stem: &str) -> String {
     stem.replace(['-', '_'], " ").trim().to_string()
 }
 
+/// 章 HTML 首个 `<h1>` 的纯文本（书名次级派生用；无 h1 → None）。
+fn first_h1_text(html: &str) -> Option<String> {
+    let start = html.find("<h1")?;
+    let after_open = start + html[start..].find('>')? + 1;
+    let end = after_open + html[after_open..].find("</h1>")?;
+    let inner = &html[after_open..end];
+    let mut text = String::new();
+    let mut in_tag = false;
+    for c in inner.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
 /// 读文件解析 front matter；返回 (FM, 正文)。无 FM / 解析失败 → (None, 原文)。
 fn peek_front_matter(vfs: &dyn Vfs, path: &RelPath) -> (Option<FrontMatter>, String) {
     let bytes = match vfs.read(path) {
@@ -774,7 +794,8 @@ pub(crate) fn decode_data_uri(src: &str) -> Option<Vec<u8>> {
 // ---------------------------------------------------------------------------
 
 /// 书名：源内 front matter（单文件 FM / 根 README FM）> 配置兜底 > 单文件
-/// 文件名 > "Untitled"（BookMetaCfg 是兜底值，front matter 优先于它）。
+/// 文件名 > 目录书根 README 首个 h1 > "Untitled"（BookMetaCfg 是兜底值，
+/// front matter 优先于它；h1 次级派生 = MVP1 真机观察 2）。
 fn assemble_meta(
     book: &mut BookDraft,
     config: &ResolvedConfig,
@@ -790,7 +811,17 @@ fn assemble_meta(
             .map(|c| prettify(&c.display_stem))
             .filter(|t| !t.is_empty())
     } else {
-        None
+        // 目录书：根 README 的首个 h1 文本（章 HTML 已在 book 里）
+        root.readme
+            .as_ref()
+            .and_then(|c| {
+                let key = SourceKey::Path(c.path.clone());
+                book.chapters
+                    .iter()
+                    .find(|ch| ch.source == key)
+                    .and_then(|ch| first_h1_text(&ch.html))
+            })
+            .filter(|t| !t.is_empty())
     };
     book.meta.title = fm_title
         .or_else(|| config.book.title.clone().filter(|t| !t.is_empty()))
@@ -931,6 +962,33 @@ mod tests {
             .insert("src/a.md", "# A");
         let entries = vfs.walk().unwrap();
         assert!(yields_to_mdbook(&entries));
+    }
+
+    #[test]
+    fn book_title_falls_back_to_root_readme_h1() {
+        // 目录书无 FM 书名 → 根 README 首个 h1（MVP1 真机观察 2）
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        let vfs = MemVfs::new()
+            .insert("README.md", "# 我的项目\n\n简介")
+            .insert("guide.md", "# 指南");
+        let env = LoadEnv {
+            config: &ResolvedConfig::default(),
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert_eq!(book.meta.title, "我的项目");
+
+        // 有 FM 书名时 FM 优先
+        let vfs = MemVfs::new()
+            .insert("README.md", "---\ntitle = \"FM 名\"\n---\n\n# h1 名")
+            .insert("guide.md", "# 指南");
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert_eq!(book.meta.title, "FM 名");
     }
 
     #[test]

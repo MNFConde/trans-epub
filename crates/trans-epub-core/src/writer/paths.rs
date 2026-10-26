@@ -60,6 +60,16 @@ pub fn style_href(name: &str) -> String {
     format!("../Styles/{name}")
 }
 
+/// 字体文件在 zip 内的路径（`Fonts/` 子目录，filename 来自 EmbeddedFont）。
+pub fn font_zip_path(filename: &str) -> String {
+    format!("{OEBPS}/Fonts/{filename}")
+}
+
+/// 字体许可页固定路径（spine 末尾，linear）。
+pub fn font_license_zip_path() -> String {
+    format!("{OEBPS}/Text/font-license.xhtml")
+}
+
 /// 资产在 EPUB 内的落位与类型信息。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssignedAsset {

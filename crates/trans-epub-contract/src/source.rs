@@ -161,6 +161,17 @@ impl FetchedPage {
 /// ADR-0004）；异步实现由服务侧用 `spawn_blocking` 适配。
 pub trait Fetcher: Send + Sync {
     fn fetch(&self, url: &Url) -> Result<FetchedPage, FetchError>;
+
+    /// 用户明确点名的单资源获取（封面图 / 钉版字体下载等）：默认实现
+    /// = [`Fetcher::fetch`]（对 mock/服务实现零破坏）；礼貌实现（如
+    /// PoliteFetcher）覆写为跳过 robots——robots 管的是"爬虫发现式
+    /// 抓取"，用户点名的 URL 不属此类。限速/重试语义不变。
+    /// `max_bytes` 是调用方对该资源的显式上限提示（如钉版字体 zip 需
+    /// 高于默认资产限额）；`None` = 用实现自身默认。
+    fn fetch_direct(&self, url: &Url, max_bytes: Option<u64>) -> Result<FetchedPage, FetchError> {
+        let _ = max_bytes;
+        self.fetch(url)
+    }
 }
 
 /// [`Fetcher`] 错误。

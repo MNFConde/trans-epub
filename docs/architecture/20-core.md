@@ -5,7 +5,7 @@ summary: "trans-epub-core 转换内核设计：Converter 门面 API 与装配扩
 tags: [trans-epub, architecture, core, pipeline, pass, dom, determinism]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-25
+updated: 2026-10-26
 related: ["../requirements.md", "10-contracts.md"]
 authoring_mode: ai_generated
 ---
@@ -118,6 +118,7 @@ pub struct PassCtx<'a> {
 | 2 | link-rewrite | 解析全部 `href`/`src` → 按章节 source 所在世界解析为 `SourceKey`（Path：相对路径；Url：以页面 URL join，**同源绝对链接也算书内候选**）→ 命中章节则改写为 EPUB 路径，命中资产则改写为资产路径；**锚点校验**（原样 → slug 归一 → 落空则去 fragment + warning，杜绝悬空锚点过不了 epubcheck）；未解析→warning+降级（Path 世界内部链接转纯文本、图片转 alt 文本占位；Url 世界未入书的同源链接**绝对化保留**，站外仍可点）；外部链接原样保留 | 必须在 asset-resolve 后（Missing 资产影响降级决策）；依赖"章节集合冻结"不变量 | — |
 | 3 | highlight | 找出未染色的 `pre > code.language-x`（已有元素子节点视为外部已染色，跳过），syntect 渲染为 `syn-` 前缀 classed span（构建期染色，不依赖阅读器）；未知语言按配置回退纯文本或记 warning。语法集用 syntect-assets 扩展 dump（bat 同源，编译期内嵌、含 TypeScript/TSX/JSX/TOML 等 syntect 默认集没有的语言），主题集仍是 syntect 默认，正则引擎保持 fancy 纯 Rust | 与 1/2 无属性冲突；必须在 code-wrap 前 | HighlightCfg |
 | 4 | code-wrap | 可选的构建期硬折行（列宽可配，按字符计），保底专治不理 pre-wrap 的阅读器 | 必须在 highlight 后（对已染色 span 里的文本节点折行，计数跨 span 连续） | WrapCfg |
+| 5 | fonts | 内嵌字体准备（`FontsCfg` 三正交，10-contracts.md）：builtin×preset 原样内嵌预子集；builtin×exact 经 Fetcher 下载钉版 zip（sha256 校验、`{tmp}/trans-epub-fonts` 缓存——本 pass 是"core 不做文件 IO"的唯一例外，缓存的是构建产物缓存而非书籍内容）→ 按书内字符子集 + 改名（OFL 义务）；user 按数据子集；失败回落 preset + warning。产出 `BookDraft.fonts`，writer 消费 | 章节文本定稿后（exact 子集的字符集来自全章文本）；不碰章 HTML | FontsCfg |
 
 **顺序是契约的一部分**：新 pass 必须声明插入位置并把理由写进本表。链执行器在 pass 边界与每章边界检查 `is_cancelled`，命中即返回 `BuildError::Cancelled`。
 

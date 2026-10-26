@@ -77,6 +77,7 @@ pub trait Fetcher: Send + Sync {
 - **web 输入是"已抓取"的**。core 不含任何爬取逻辑；`Pages` 的顺序就是成书顺序，页面发现与排序质量是采集方（CLI 的 crawl 命令 / 服务）的责任。
 - `Fetcher` 是同步 trait（core 是同步内核）；异步实现由服务侧用 `spawn_blocking` 适配。
 - **`Fetcher` 的职责止于传输与发现**：产出原始字节，不做内容理解——正文抽取、编码判定、站点适配全在 core web 前端。站点适配（预设 / `selectors` / `strip`）的单一事实源是 `WebCfg`（数据），不随 Fetcher 实现走：CLI 与服务可各换采集实现，抽取规则永远只有 core 一套。
+- **`fetch_direct`（2026-10-26 增）**：用户明确点名的单资源获取（封面图 / 钉版字体下载等）——trait 默认实现 = `fetch`（对实现零破坏，mock/服务实现自动兼容）；`PoliteFetcher` 覆写为跳过 robots 检查（robots 管的是"爬虫发现式抓取"，用户点名的 URL 不属此类；github.com robots 禁 release 资产路径曾致 exact 字体下载被误拒）。限速 / 重试语义不变；`max_bytes` 参数是调用方的显式上限提示（钉版字体 zip ~140MB 高于常规资产限额），`None` = 实现自身默认。
 - 离线模式不是 Fetcher 的事：`AssetsCfg.remote = false` 时 asset-resolve pass 直接跳过远程拉取并降级。
 
 ## 前端契约：probe / load 分离
@@ -276,10 +277,27 @@ pub struct ResolvedConfig {
     pub highlight: HighlightCfg,  // 亮/暗主题、未知语言回退
     pub wrap: WrapCfg,            // PreWrap（默认）| Hard { width: 92 }
     pub theme: ThemeCfg,          // 内置主题 + extra_css: String（壳层已把文件读成字符串）
+    pub fonts: FontsCfg,          // 内嵌字体（见下）
 }
 ```
 
 各字段的默认值以需求定稿 v1.0 为准。原则：**配置只描述"要什么"，不描述"怎么做"**——不存在"跳过某个 pass"这类过程性开关，扩展行为通过 Converter 的装配点完成。
+
+### 内嵌字体（FontsCfg，2026-10-26 增）
+
+```rust
+pub struct FontsCfg {
+    pub embed: bool,               // 默认 false：产物保持轻量，CJK 书可开
+    pub subset: FontSubsetMode,    // Preset（默认，内置 8105 字预子集）| Exact（按书内字符精确子集）
+    pub source: FontSource,        // Builtin（默认，Maple Mono CN 子集）| User { data, family }
+}
+```
+
+- **三正交**：内嵌 on/off × 子集模式 preset/exact × 字体源 builtin/用户路径。用户路径由壳层读成字节进配置（同 `ThemeCfg.extra_css` 先例——core 不做文件 IO 决策）；`family` 缺省时 core 读 name 表得出。
+- **builtin 资产**：`crates/trans-epub-core/assets/fonts/TransEpubMono-Regular.subset.ttf`（Maple Mono CN v7.9 子集 + 改名 "TransEpub Mono"，OFL-1.1；溯源与再生成见同目录 NOTICE.md 与 `scripts/gen-font-subset.py`）。**exact × builtin 需要全量字体**：经 Fetcher 下载钉版 URL（release v7.9、sha256 校验），壳层缓存于本地缓存目录；下载/校验失败回落 preset 子集 + warning，不断书。
+- **OFL-1.1 义务随书**：内嵌时 writer 在书末加字体许可页（OFL 全文 + 上游版权 + 修改声明（子集 + 改名）+ 溯源 URL），manifest 登记；用户字体不走该页，许可责任在配置方（CLI 对此提示）。
+- **off 档**：不嵌任何字体，CSS 代码字体链退回具体名字体链（20-core.md / 50-writer.md 口径）。
+- **矛盾配置**：`source = User` 且 `embed = false` 时行为以 embed 为准（不内嵌），CLI 层给出提示（服务侧由前端提示）。
 
 ## 稳定性与变更流程
 

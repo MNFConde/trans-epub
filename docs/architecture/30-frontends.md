@@ -39,7 +39,7 @@ probe 只看文件名与目录形态（廉价），规则按优先级：
 - heading id 生成（义务清单第 2 条）：comrak 渲染后经 DOM 后处理补 id——用 comrak 的 `Anchorizer`（GitHub 式 slug + 去重，与 link-rewrite 的锚点归一同算法）；不启用 comrak 的 `header_id_prefix`（它会往每个 heading 里塞自引用锚链接）。
 - 章节来源：`README.md`/`index.md` 上提为所在目录层级的首页（分组 TocItem 直接指向它）、其余 md 一文件一章；目录嵌套映射为 toc 嵌套（不拍平）。
 - **资产登记**：本地图片/媒体（相对路径，以章节路径为基解析）→ 由 Vfs 读入为 `AssetData::Owned`（本地读取发生在 load——pass 不再读 Vfs）；`http(s)` 图片 → `AssetData::Remote(url)`（下载归 asset-resolve pass，前端不抓）；`data:` URI → Owned（解码）。非 md 文件不进章节。
-- front matter 的 `title` 优先于文件名做章名；单文件书 / 根 README 的 FM title 兜底书名（优先于配置文件的 book.title）。
+- front matter 的 `title` 优先于文件名做章名；单文件书 / 根 README 的 FM title 兜底书名（优先于配置文件的 book.title）。目录书无 FM 书名时次级派生**根 README 首个 h1 文本**（MVP1 真机观察 2，2026-10 落地），仍无则 "Untitled"。
 
 ## mdbook 前端（MVP2，已落地）
 

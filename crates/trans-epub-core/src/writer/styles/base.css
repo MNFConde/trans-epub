@@ -43,6 +43,16 @@ code {
   border-radius: 3px;
 }
 
+/* 代码块轻底色 + 边框 + padding：与正文纸面拉开区分（MVP1 真机观察 1）；
+ * 折行策略（pre-wrap/硬折行）在 code.css，主题配色在 .syn-* 不与此冲突 */
+pre {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  line-height: 1.45;
+}
+
 hr { border: 0; border-top: 1px solid #d0d7de; margin: 1.5em 0; }
 ul, ol { padding-left: 1.5em; }
 li.task-list-item { list-style: none; }
@@ -59,5 +69,6 @@ li.task-list-item { list-style: none; }
   th, td { border-color: #30363d; }
   th { background: #161b22; }
   code { background: #161b22; }
+  pre { background: #161b22; border-color: #30363d; }
   hr { border-top-color: #30363d; }
 }

@@ -112,6 +112,16 @@ pub struct CommonArgs {
     /// 自定义 CSS 文件（追加在内置主题之后）
     #[arg(long, value_name = "FILE")]
     pub extra_css: Option<PathBuf>,
+    /// 内嵌字体（TransEpub Mono：Maple Mono CN 子集，OFL-1.1 义务随书）
+    #[arg(long)]
+    pub embed_fonts: bool,
+    /// 字体子集模式（preset = 内置 8105 字预子集；exact = 按书内字符，
+    /// builtin 源需联网下载钉版全量字体）
+    #[arg(long, value_enum)]
+    pub font_subset: Option<FontSubsetArg>,
+    /// 用户字体文件（ttf；配合 --embed-fonts 使用）
+    #[arg(long, value_name = "FILE")]
+    pub font_file: Option<PathBuf>,
     /// 报告格式
     #[arg(long, value_enum, default_value = "text")]
     pub report: ReportArg,
@@ -138,6 +148,12 @@ pub enum WrapArg {
 pub enum ReportArg {
     Text,
     Json,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontSubsetArg {
+    Preset,
+    Exact,
 }
 
 /// 入口逻辑（main 只做解析与 exit）。返回进程退出码。
@@ -401,7 +417,26 @@ fn load_config(path: Option<&Path>) -> Result<ResolvedConfig, String> {
         Some(p) => {
             let text = std::fs::read_to_string(p)
                 .map_err(|e| format!("read config {}: {e}", p.display()))?;
-            toml::from_str(&text).map_err(|e| format!("parse config {}: {e}", p.display()))
+            let mut config: ResolvedConfig =
+                toml::from_str(&text).map_err(|e| format!("parse config {}: {e}", p.display()))?;
+            // [fonts.source] user 的 path 在壳层解析成 data（core 只认 data）
+            if let trans_epub_core::contract::config::FontSource::User { path, data, .. } =
+                &mut config.fonts.source
+            {
+                if data.is_none() {
+                    if let Some(rel) = path.as_deref() {
+                        let font_path = if Path::new(rel).is_absolute() {
+                            PathBuf::from(rel)
+                        } else {
+                            p.parent().unwrap_or(Path::new(".")).join(rel)
+                        };
+                        let bytes = std::fs::read(&font_path)
+                            .map_err(|e| format!("read font {}: {e}", font_path.display()))?;
+                        *data = Some(bytes);
+                    }
+                }
+            }
+            Ok(config)
         }
     }
 }
@@ -431,6 +466,27 @@ fn apply_flags(config: &mut ResolvedConfig, common: &CommonArgs) -> Result<(), S
     if let Some(css_path) = &common.extra_css {
         config.theme.extra_css = std::fs::read_to_string(css_path)
             .map_err(|e| format!("read extra css {}: {e}", css_path.display()))?;
+    }
+    if common.embed_fonts {
+        config.fonts.embed = true;
+    }
+    if let Some(subset) = common.font_subset {
+        config.fonts.subset = match subset {
+            FontSubsetArg::Preset => trans_epub_core::contract::config::FontSubsetMode::Preset,
+            FontSubsetArg::Exact => trans_epub_core::contract::config::FontSubsetMode::Exact,
+        };
+    }
+    if let Some(font_path) = &common.font_file {
+        let data = std::fs::read(font_path)
+            .map_err(|e| format!("read font {}: {e}", font_path.display()))?;
+        config.fonts.source = trans_epub_core::contract::config::FontSource::User {
+            path: None,
+            data: Some(data),
+            family: None,
+        };
+        if !config.fonts.embed {
+            eprintln!("note: --font-file 已指定但未开启内嵌（--embed-fonts），字体不会嵌入产物");
+        }
     }
     Ok(())
 }

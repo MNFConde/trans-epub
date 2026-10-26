@@ -14,7 +14,7 @@ use std::io::Write;
 use sha2::{Digest, Sha256};
 use trans_epub_contract::config::ResolvedConfig;
 use trans_epub_contract::error::BuildError;
-use trans_epub_contract::ir::{AssetData, BookDraft, ChapterId, SourceKey, TocItem};
+use trans_epub_contract::ir::{AssetData, BookDraft, ChapterId, EmbeddedFont, SourceKey, TocItem};
 use trans_epub_contract::writer::Writer;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -47,7 +47,7 @@ impl Writer for Epub3Writer {
         let uid = derive_uid(book);
         let opf = render_opf(book, config, &assigned, &uid);
         let nav = render_nav(book);
-        let code_css = render_code_css(config);
+        let code_css = render_code_css(config, &book.fonts);
 
         let mut buf: Vec<u8> = Vec::new();
         {
@@ -93,6 +93,14 @@ impl Writer for Epub3Writer {
             // 资产（只嵌就绪的；顺序 = BTreeMap 键序，确定）
             for (zip_path, bytes) in embedded_assets(book, &assigned) {
                 add(&zip_path, &bytes, false)?;
+            }
+
+            // 内嵌字体（fonts pass 产出）与 OFL 义务页（spine 末尾）
+            for font in &book.fonts {
+                add(&paths::font_zip_path(&font.filename), &font.data, false)?;
+            }
+            if let Some(page) = font_license_page(book) {
+                add(&paths::font_license_zip_path(), page.as_bytes(), false)?;
             }
 
             // 样式表
@@ -222,6 +230,21 @@ fn render_opf(
             opf_href(&asset.zip_path),
             asset.media_type
         ));
+    }
+
+    // 内嵌字体 + OFL 义务页（spine 末尾 linear；epubcheck 对 non-linear
+    // 要求超链接可达，义务页按普通内容页处理最稳）
+    for (i, font) in book.fonts.iter().enumerate() {
+        manifest.push_str(&format!(
+            "    <item id=\"font{i:02}\" href=\"Fonts/{}\" media-type=\"application/font-sfnt\"/>\n",
+            opf_href(&paths::font_zip_path(&font.filename))
+        ));
+    }
+    if book.fonts.iter().any(|f| f.license.is_some()) {
+        manifest.push_str(
+            "    <item id=\"font-license\" href=\"Text/font-license.xhtml\" media-type=\"application/xhtml+xml\"/>\n",
+        );
+        spine.push_str("    <itemref idref=\"font-license\"/>\n");
     }
 
     let mut creators = String::new();
@@ -403,10 +426,15 @@ fn render_cover_page(cover_href: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// code.css（含 syntect 主题配色）
+// code.css（含 syntect 主题配色 + 内嵌字体 @font-face）
 // ---------------------------------------------------------------------------
 
-fn render_code_css(config: &ResolvedConfig) -> String {
+/// 无内嵌字体时的代码字体链：具体名优先（MuPDF 等老栈不解析泛型族回退
+/// Times，MVP1 真机观察 3）；有内嵌字体时在链首插入其族名。
+const CODE_FONT_FALLBACK: &str =
+    "\"Maple Mono NF CN\", \"Cascadia Code\", Consolas, \"Noto Sans Mono CJK SC\", monospace";
+
+fn render_code_css(config: &ResolvedConfig, fonts: &[EmbeddedFont]) -> String {
     let light_name = config.highlight.light_theme.as_str();
     let dark_name = config.highlight.dark_theme.as_str();
     let light = highlight::theme_css(light_name)
@@ -415,17 +443,86 @@ fn render_code_css(config: &ResolvedConfig) -> String {
     let dark = highlight::theme_css(dark_name)
         .or_else(|| highlight::theme_css("base16-ocean.dark"))
         .unwrap_or_default();
+
+    let mut font_faces = String::new();
+    let mut families: Vec<String> = Vec::new();
+    for font in fonts {
+        if !families.iter().any(|f| f == &font.family) {
+            families.push(font.family.clone());
+        }
+        font_faces.push_str(&format!(
+            "@font-face {{\n  font-family: \"{}\";\n  src: url(../Fonts/{});\n  font-weight: normal;\n  font-style: normal;\n}}\n",
+            xml_escape(&font.family),
+            font.filename
+        ));
+    }
+    let family_chain = if families.is_empty() {
+        CODE_FONT_FALLBACK.to_string()
+    } else {
+        let quoted: Vec<String> = families.iter().map(|f| format!("\"{f}\"")).collect();
+        format!("{}, {CODE_FONT_FALLBACK}", quoted.join(", "))
+    };
+    let font_rules =
+        format!("pre, code, kbd, samp {{ font-family: {family_chain}; }}\n{font_faces}");
+
     format!(
         "/* trans-epub code.css —— 代码块基线 + syntect 主题配色 */\n\
          /* 默认 pre-wrap 按屏宽自适应折行（ADR-0007）；硬折行归 code-wrap pass */\n\
          pre {{ white-space: pre-wrap; word-break: break-word; }}\n\
-         pre code {{ background: transparent; padding: 0; }}\n\n\
+         pre code {{ background: transparent; padding: 0; }}\n\
+         {font_rules}\n\
          /* 亮色主题（{light_name}） */\n{light}\n\n\
          @media (prefers-color-scheme: dark) {{\n{dark}}}\n",
         light_name = light_name,
         light = light,
         dark = dark,
     )
+}
+
+// ---------------------------------------------------------------------------
+// 字体许可页（OFL-1.1 义务随书）
+// ---------------------------------------------------------------------------
+
+/// 有带许可的字体才出页；多个字体合一页（当前实际只 builtin 一种）。
+fn font_license_page(book: &BookDraft) -> Option<String> {
+    let licensed: Vec<&EmbeddedFont> = book.fonts.iter().filter(|f| f.license.is_some()).collect();
+    if licensed.is_empty() {
+        return None;
+    }
+    let mut sections = String::new();
+    for font in &licensed {
+        let license = font.license.as_ref().expect("filtered");
+        sections.push_str(&format!(
+            "<section><h2>{}（修改声明与溯源）</h2><p>{}</p></section>\n",
+            xml_escape(&font.family),
+            xml_escape(&license.notice)
+        ));
+    }
+    // OFL 全文取首个字体的（builtin 场景全文一致）
+    let ofl = licensed[0]
+        .license
+        .as_ref()
+        .expect("filtered")
+        .ofl_text
+        .clone();
+    Some(format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>字体许可</title>
+  <link rel="stylesheet" type="text/css" href="../Styles/base.css"/>
+</head>
+<body>
+ <h1>字体许可</h1>
+{sections}<section><h2>SIL Open Font License 1.1</h2>
+<pre xml:space="preserve">{ofl}</pre></section>
+</body>
+</html>
+"#,
+        sections = sections,
+        ofl = xml_escape(&ofl),
+    ))
 }
 
 // ---------------------------------------------------------------------------

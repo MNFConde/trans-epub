@@ -17,9 +17,14 @@ globset = "0.4"
 html5ever = "0.40"
 scraper = { version = "0.29", features = ["deterministic"] }
 sha2 = "0.11"
+# exact 子集模式：char→glyph 映射（ttf-parser）+ 轮廓子集化（subsetter，
+# typst 同源）；纯 Rust，交叉构建零 C 依赖（ADR 0013 口径）
+subsetter = "0.1"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 # bat 扩展语法集 dump（TypeScript/TSX 等 syntect 默认集没有的语言）；正则引擎保持 fancy 纯 Rust
 syntect-assets = { version = "0.23", default-features = false, features = ["regex-fancy"] }
+# 字体 name 表读取（用户字体族名探测）与子集产物校验
+ttf-parser = "0.25"
 toml = "1"
 trans-epub-contract = { path = "../trans-epub-contract" }
 url = { version = "2", features = ["serde"] }

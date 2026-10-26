@@ -75,6 +75,9 @@ trans-epub crawl <start> [采集旗标] [通用旗标]  # 采集族：静态文�
 | `--wrap MODE` | `pre-wrap` | 代码长行策略：`pre-wrap`（软换行）或 `hard`（硬折行） |
 | `--wrap-width N` | 92 | 硬折行列宽（`--wrap hard` 时生效） |
 | `--extra-css FILE` | — | 自定义 CSS，追加在内置主题之后 |
+| `--embed-fonts` | 关 | 内嵌 TransEpub Mono 字体（Maple Mono CN 子集，OFL-1.1 义务随书；CJK 书推荐开，产物约 +2~6MB） |
+| `--font-subset MODE` | `preset` | 子集模式：`preset`（内置 8105 字预子集，离线）或 `exact`（按书内字符精确子集，需联网下载钉版全量字体，失败自动回落 preset） |
+| `--font-file FILE` | — | 用户字体（ttf）替代内置字体，配合 `--embed-fonts`；许可责任在配置方 |
 | `--report FORMAT` | `text` | 报告格式：`text`（stderr 人读）或 `json`（stdout，供 CI/服务消费） |
 | `--strict` | 关 | 任何 warning 都视为失败（退出码 1） |
 | `--dry-run` | 关 | 只输出清单不出书，两族语义不同（见下） |
@@ -108,4 +111,13 @@ remote = false        # 等价 --no-remote-images
 [wrap]
 mode = "hard"
 width = 80
+
+[fonts]               # 等价 --embed-fonts
+embed = true
+subset = "exact"      # preset | exact
+
+# 用户字体（替代内置；path 相对配置文件所在目录）
+# [fonts.source]
+# kind = "user"
+# path = "my-mono.ttf"
 ```

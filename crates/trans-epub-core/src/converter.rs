@@ -19,7 +19,7 @@ use crate::dom::BookDom;
 use crate::frontends::md::MdFrontend;
 use crate::frontends::mdbook::MdbookFrontend;
 use crate::frontends::web::WebFrontend;
-use crate::pipeline::{AssetResolve, CodeWrap, Highlight, LinkRewrite, Pass, PassCtx};
+use crate::pipeline::{AssetResolve, CodeWrap, Fonts, Highlight, LinkRewrite, Pass, PassCtx};
 use crate::writer::Epub3Writer;
 
 /// 注入的 I/O，由壳层组装（CLI / 未来服务各自提供实现）。
@@ -56,6 +56,7 @@ impl Converter {
                 Box::new(LinkRewrite),
                 Box::new(Highlight),
                 Box::new(CodeWrap),
+                Box::new(Fonts),
             ],
             writer: Box::new(Epub3Writer),
         }

@@ -14,7 +14,9 @@ use html5ever::{LocalName, QualName, ns};
 use scraper::node::{Node, Text as TextNode};
 use scraper::{Html, Selector, StrTendril};
 use trans_epub_contract::error::{BuildError, Warning};
-use trans_epub_contract::ir::{Asset, BookDraft, BookMeta, Chapter, ChapterId, SourceKey, TocItem};
+use trans_epub_contract::ir::{
+    Asset, BookDraft, BookMeta, Chapter, ChapterId, EmbeddedFont, SourceKey, TocItem,
+};
 
 fn text_node(text: &str) -> TextNode {
     TextNode {
@@ -74,6 +76,7 @@ pub struct BookDom {
     pub meta: BookMeta,
     pub toc: Vec<TocItem>,
     pub assets: BTreeMap<SourceKey, Asset>,
+    pub fonts: Vec<EmbeddedFont>,
     pub warnings: Vec<Warning>,
     pub chapters: Vec<ChapterDom>,
 }
@@ -84,6 +87,7 @@ impl BookDom {
             meta: book.meta,
             toc: book.toc,
             assets: book.assets,
+            fonts: book.fonts,
             warnings: book.warnings,
             chapters: book.chapters.iter().map(ChapterDom::parse).collect(),
         }
@@ -94,6 +98,7 @@ impl BookDom {
             meta: self.meta,
             toc: self.toc,
             assets: self.assets,
+            fonts: self.fonts,
             warnings: self.warnings,
             chapters: self
                 .chapters

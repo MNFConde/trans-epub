@@ -30,6 +30,8 @@ pub struct BookDraft {
     pub chapters: Vec<Chapter>,
     /// 章节外资源（图片/字体/封面），键与章节 source 同一编址空间。
     pub assets: BTreeMap<SourceKey, Asset>,
+    /// 内嵌字体（fonts pass 产出，writer 消费；默认空 = 不内嵌）。
+    pub fonts: Vec<EmbeddedFont>,
     /// 全程累积，只增不减。
     pub warnings: Vec<Warning>,
 }
@@ -98,6 +100,28 @@ pub enum AssetData {
     Remote(Url),
     /// resolve 失败的终态；引用方降级处理。
     Missing,
+}
+
+/// 内嵌字体（fonts pass 产出，writer 消费）。OFL-1.1 义务随 `license` 走。
+#[derive(Debug, Clone)]
+pub struct EmbeddedFont {
+    /// CSS `font-family` 用的最终族名（builtin 已履行改名义务）。
+    pub family: String,
+    /// EPUB 内 `OEBPS/Fonts/` 下的文件名（writer 决定路径，此处只命名）。
+    pub filename: String,
+    /// 字体文件字节（TTF；subset 已完成，writer 原样落盘）。
+    pub data: Vec<u8>,
+    /// 字体许可页内容；`None` = 用户字体（许可责任在配置方，不出义务页）。
+    pub license: Option<FontLicense>,
+}
+
+/// OFL-1.1 随书义务。
+#[derive(Debug, Clone)]
+pub struct FontLicense {
+    /// OFL 全文（含上游版权行）。
+    pub ofl_text: String,
+    /// 修改声明（子集范围 + 改名）与溯源（仓库/版本/sha256）。
+    pub notice: String,
 }
 
 /// 书籍元数据。

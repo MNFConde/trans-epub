@@ -5,7 +5,7 @@ summary: "trans-epub EPUB3 写出器设计：BookDraft→字节、产出物结�
 tags: [trans-epub, architecture, writer, epub3, css, theme]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-25
+updated: 2026-10-26
 related: ["../requirements.md", "10-contracts.md", "20-core.md"]
 authoring_mode: ai_generated
 ---
@@ -43,7 +43,9 @@ OEBPS/
 ├── content.opf                 # 元数据 + manifest + spine（= chapters 顺序）
 ├── nav.xhtml                   # 嵌套目录（toc 树原样映射，不拍平）
 ├── Text/ch00001.xhtml…         # 一章一文件，按 spine 序命名
-├── Images/…  Fonts/…  Media/…  # 资产按类型分目录（命名规则出自 writer::paths）
+│   └── font-license.xhtml      # 字体许可页（仅内嵌带许可字体时，spine 末尾）
+├── Images/…  Media/…           # 资产按类型分目录（命名规则出自 writer::paths）
+├── Fonts/…                     # 内嵌字体（fonts pass 产出，默认不嵌）
 └── Styles/
     ├── base.css                # 排版基线
     ├── code.css                # 代码块 + 高亮配色（亮/暗两套）
@@ -60,13 +62,14 @@ EPUB 内部路径规则集中在 `writer::paths` 模块单点定义，link-rewri
 - **元数据**：BookMeta → DC 元素；language 必填（BCP-47）；unique-identifier 确定性派生（书名+源集哈希）。
 - **封面**：`meta.cover` 指向资产，可选（用户供图，需求定稿）。
 - **Missing 资产**：引用已在 link-rewrite 降级（占位文本），writer 不再处理，只保证不写悬空引用。
+- **内嵌字体**（`BookDraft.fonts` 非空时）：字体文件落 `OEBPS/Fonts/`（manifest media-type `application/font-sfnt`）；code.css 头部生成 `@font-face` 并把字体族名插进代码字体链首（链尾保持具体名字体链 + monospace 兜底——老栈不解析泛型族，MVP1 真机观察 3）；带许可的字体（builtin）在 spine 末尾追加**字体许可页**（OFL-1.1 全文 + 上游版权 + 修改声明（子集 + 改名）+ 溯源），用户字体不出义务页（许可责任在配置方）。资产溯源与再生成见 `crates/trans-epub-core/assets/fonts/NOTICE.md`。
 
 ## CSS 主题体系
 
 差异化所在的"EPUB 成书质量"，很大一半落在这里：
 
-- **base.css**：中性亮色排版基线——正文/标题/引用/表格/图片自适应（`max-width:100%`）；含暗色适配块。
-- **code.css**：`pre`/`code` 基础样式 + `pre { white-space: pre-wrap; word-break: break-word; }`（pre-wrap 默认，ADR-0007）+ syntect 主题配色——亮色主题 CSS 平铺 + 暗色主题包在 `@media (prefers-color-scheme: dark)` 里；span class 带 `syn-` 前缀防与书内 CSS 冲突。主题 CSS 由 syntect 运行时生成（`OnceLock` 缓存，同一 syntect 版本字节确定），主题名可配、未知名回落默认。
+- **base.css**：中性亮色排版基线——正文/标题/引用/表格/图片自适应（`max-width:100%`）；代码块轻底色 + 边框 + padding（与正文纸面拉开区分，MVP1 真机观察 1）；含暗色适配块。
+- **code.css**：`pre`/`code` 基础样式 + 代码字体链（具体名优先，泛型 monospace 兜底；内嵌字体时族名插链首）+ `pre { white-space: pre-wrap; word-break: break-word; }`（pre-wrap 默认，ADR-0007）+ syntect 主题配色——亮色主题 CSS 平铺 + 暗色主题包在 `@media (prefers-color-scheme: dark)` 里；span class 带 `syn-` 前缀防与书内 CSS 冲突。主题 CSS 由 syntect 运行时生成（`OnceLock` 缓存，同一 syntect 版本字节确定），主题名可配、未知名回落默认。
 - **admonition.css**：GitHub 风格提示色块（note/tip/important/warning/caution 五色，亮暗两套）。
 - **extra.css**：`ThemeCfg.extra_css` 原样追加，选择器优先级天然靠后（用户叠加不改内置主题）。
 - base/admonition 以 `include_str!` 内嵌于二进制，版本随 crate 走。

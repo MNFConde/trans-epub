@@ -20,6 +20,7 @@ pub struct ResolvedConfig {
     pub highlight: HighlightCfg,
     pub wrap: WrapCfg,
     pub theme: ThemeCfg,
+    pub fonts: FontsCfg,
 }
 
 /// 元数据兜底值（front matter 与源内元数据优先于这里）。
@@ -187,6 +188,44 @@ pub struct ThemeCfg {
     pub extra_css: String,
 }
 
+/// 字体子集模式。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FontSubsetMode {
+    /// 内置预子集（《通用规范汉字表》8105 字 + 编程文档常用字符）。
+    #[default]
+    Preset,
+    /// 按书内实际字符精确子集（builtin 源需经 Fetcher 下载全量字体）。
+    Exact,
+}
+
+/// 字体源。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum FontSource {
+    /// 内置 TransEpub Mono（Maple Mono CN v7.9 子集 + 改名，OFL-1.1，
+    /// 资产与溯源见 core 的 assets/fonts/）。
+    #[default]
+    Builtin,
+    /// 用户字体：`path` 仅供壳层中转（TOML 亲和，CLI 装载后解析成 `data`），
+    /// core 只认 `data`；`family` 缺省时 core 读字体 name 表。许可责任在配置方。
+    User {
+        path: Option<String>,
+        data: Option<Vec<u8>>,
+        family: Option<String>,
+    },
+}
+
+/// 内嵌字体（10-contracts.md「内嵌字体」节；三正交：embed × subset × source）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FontsCfg {
+    /// 是否内嵌（false = 产物不携带字体，CSS 退回具体名字体链）。
+    pub embed: bool,
+    pub subset: FontSubsetMode,
+    pub source: FontSource,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +239,38 @@ mod tests {
         assert_eq!(cfg.wrap.mode, WrapMode::PreWrap);
         assert_eq!(cfg.highlight.light_theme, "InspiredGitHub");
         assert!(cfg.mdbook.skip_drafts);
+        assert!(
+            !cfg.fonts.embed,
+            "字体默认不内嵌（产物轻量，CJK 书 opt-in）"
+        );
+        assert_eq!(cfg.fonts.subset, FontSubsetMode::Preset);
+        assert_eq!(cfg.fonts.source, FontSource::Builtin);
+    }
+
+    #[test]
+    fn fonts_config_toml_forms() {
+        let cfg: ResolvedConfig = toml::from_str(
+            r#"
+            [fonts]
+            embed = true
+            subset = "exact"
+
+            [fonts.source]
+            kind = "user"
+            path = "my-font.ttf"
+            "#,
+        )
+        .unwrap();
+        assert!(cfg.fonts.embed);
+        assert_eq!(cfg.fonts.subset, FontSubsetMode::Exact);
+        match &cfg.fonts.source {
+            FontSource::User { path, data, family } => {
+                assert_eq!(path.as_deref(), Some("my-font.ttf"));
+                assert!(data.is_none(), "壳层装载后才解析为 data");
+                assert!(family.is_none());
+            }
+            other => panic!("unexpected source: {other:?}"),
+        }
     }
 
     #[test]

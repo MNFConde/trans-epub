@@ -1,5 +1,5 @@
 //! 公共管线：pass 链（asset-resolve → link-rewrite → highlight →
-//! code-wrap），对三种来源的 HTML 统一处理——复用资产全在这层。
+//! code-wrap → fonts），对三种来源的 HTML 统一处理——复用资产全在这层。
 //! 顺序契约与 Pass trait 见 docs/architecture/20-core.md（Pass 与
 //! DOM 类型留 core，不进契约 crate）。
 //!
@@ -8,11 +8,13 @@
 
 pub mod asset_resolve;
 pub mod code_wrap;
+pub mod fonts;
 pub mod highlight;
 pub mod link_rewrite;
 
 pub use asset_resolve::AssetResolve;
 pub use code_wrap::CodeWrap;
+pub use fonts::Fonts;
 pub use highlight::Highlight;
 pub use link_rewrite::LinkRewrite;
 

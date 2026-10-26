@@ -33,6 +33,10 @@ pub(crate) fn convert(name: &str) -> BuildOutput {
     convert_with(name, fixture_config(name))
 }
 
+pub(crate) fn convert_config(name: &str, config: ResolvedConfig) -> BuildOutput {
+    convert_with(name, config)
+}
+
 fn convert_with(name: &str, config: ResolvedConfig) -> BuildOutput {
     let vfs = MemVfs::from_dir(format!("{FIXTURES}/{name}")).expect("fixture dir readable");
     let fetcher = MockFetcher::new().insert(REMOTE_PNG_URL, png_bytes(), "image/png");
