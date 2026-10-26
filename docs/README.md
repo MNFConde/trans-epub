@@ -54,6 +54,7 @@ trans-epub 项目文档索引。所有文档为规划稿，随实现推进持续
 | 文档 | 职责 | 何时读 |
 |---|---|---|
 | [testing/manual-checklist.md](testing/manual-checklist.md) | 真机抽验清单：何时抽验、检查点矩阵、阅读器优先级 | 里程碑合入前/改渲染相关时 |
+| [testing/organization.md](testing/organization.md) | 测试落点与组织细则：单元/集成分布判据、镜像映射与命名、单一锚点、fuzz 位置（ADR 0011 操作手册） | 新增/挪动测试时 |
 | [AGENTS.md](AGENTS.md) | docs/ 写作约束（frontmatter、编号、状态标记、单源、存档） | 写/改 docs 前 |
 
 **推荐阅读顺序**（新加入者）：requirements → architecture/00 → 按编号进领域篇 → adr 按需。
