@@ -1,11 +1,11 @@
 ---
 type: testing
 status: active
-summary: "trans-epub 真机抽验清单：MVP 里程碑合入前全量抽验；主力 Koodo Reader，Apple Books / KOReader 各一；检查点覆盖代码高亮亮暗切换、长行折行、嵌套目录跳转、图片显示、脚注与 admonition 渲染、封面、mdBook 源结构、web 源抽取与乱码"
+summary: "trans-epub 真机抽验清单：MVP 里程碑合入前全量抽验；主力 Koodo Reader，Apple Books / KOReader 各一；检查点覆盖代码高亮亮暗切换、长行折行、嵌套目录跳转、图片显示、脚注与 admonition 渲染、封面、mdBook 源结构、web 源抽取与乱码、内嵌字体生效"
 tags: [trans-epub, testing, manual-checklist, epub-readers]
 contains: [checklist]
 created: 2026-10-24
-updated: 2026-10-25
+updated: 2026-10-26
 related: ["../requirements.md", "../architecture/50-writer.md"]
 authoring_mode: ai_generated
 ---
@@ -20,6 +20,7 @@ epubcheck 只能保证结构合法，"在现代 EPUB3 阅读器上真正可读"�
 - MVP 里程碑合入前：全量跑一遍。
 - 日常改动：只跑受影响的检查点（改 CSS → 亮暗与排版组；改 writer 结构 → 全量）。
 - 阅读器升级出兼容问题时：针对该阅读器复验。
+- 自动化前置门：`scripts/mutool-smoke.sh`（MuPDF 引擎渲染非空白，epubcheck 之后的引擎档；只验可渲染性，视觉结论仍以本清单为准）。
 
 ## 样书
 
@@ -32,6 +33,12 @@ cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/mdbook -o m
 ```
 
 web 源用 `crawl` 对一个小型静态站现抓现转（例如 `trans-epub crawl https://<小站>/ --preset <预设> -o web.epub`）；离线替代：把 golden 的 web 样书页面存成 `list.txt` 后经 crawl 二次转换。
+
+内嵌字体样书（fonts 检查点用，preset 模式约 2.9MB）：
+
+```bash
+cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/flat -o flat-fonts.epub --embed-fonts
+```
 
 ## 检查点
 
@@ -46,6 +53,12 @@ web 源用 `crawl` 对一个小型静态站现抓现转（例如 `trans-epub cra
 
 - [ ] 超长代码行按屏宽折行（pre-wrap），无横向滚动
 - [ ] 缩进对齐未被打乱
+
+### 内嵌字体（--embed-fonts 样书）
+
+- [ ] @font-face 加载成功，代码块/行内 code 字体链首名命中内嵌族名（TransEpub Mono）
+- [ ] 与未嵌字体书并排对比字形一致（子集覆盖范围内）
+- [ ] 书末字体许可页可见（OFL 全文 + 修改声明与溯源）
 
 ### 目录与跳转
 
@@ -99,9 +112,16 @@ web 源用 `crawl` 对一个小型静态站现抓现转（例如 `trans-epub cra
 
 | 阅读器 | 角色 | 备注 |
 |---|---|---|
-| Koodo Reader | 主力 | 每次全量 |
-| Apple Books | 抽验 | CSS 兼容性风向标（macOS/iOS） |
-| KOReader | 抽验 | 嵌入式设备口径（较老的渲染栈） |
+| Koodo Reader | 主力 | 每次全量；可 CDP 驱动（`scripts/koodo-scan.mjs`，命令行开书 + 翻页收集 + 截图） |
+| Apple Books | 抽验 | CSS 兼容性风向标（macOS/iOS）；暂缺设备，首发前补验 |
+| KOReader | 抽验 | 嵌入式设备口径（较老的渲染栈）；无 Windows 构建，走 WSL Ubuntu 源码构建（kodev build）+ busted spec 驱动 |
+
+## 阅读器行为观察（累积，随抽验更新）
+
+阅读器主题系统与书内 CSS 的领地之争属行业常态，以下为实测确认的各阅读器行为，抽验结论按下表口径解读：
+
+- **Koodo 2.4.6**（2026-10-26，CDP 驱动）：阅读主题按元素选择器注入背景色，**pre 背景被接管**（白天=阅读背景色，书内 `#f6f8fa` 不生效），但边框/圆角/padding/字体链/折行/行内 code 底色全部生效；`prefers-color-scheme` **不映射**应用主题——黑夜主题下正文文字被阅读器换白，代码块保持白底深字（刺眼但可读），书内暗色 CSS 套不激活。判定：阅读器领地行为，不修产物；视觉区分由边框保底。
+- **MuPDF 1.23**（mutool 冒烟）：EPUB 3.0 版本串告警（"unknown epub version: 3.0"）非致命，正常渲染；image-only 封面页按 img 自然尺寸渲染不放大。
 
 发现问题时：记录阅读器 + 版本 + 检查点 + 截图，回到 docs/research/ecosystem.md
 的对应坑位；修复后把 case 固化为 fixture/golden（能自动化的部分）。
