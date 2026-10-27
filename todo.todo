@@ -89,6 +89,18 @@ trans-epub:
       ✔ 明确不做（裁剪已定勿重开）: OOM 注入（Rust 分配失败即 abort 无对应物）/crash 断电测试（无状态纯文件重跑天然幂等，deterministic_output 已钉）/sanitizer+miri（全仓无 unsafe）/视觉快照类（golden 字节+mutool+真机三档已锚，重复维护）/覆盖率数字目标（不为 getter 凑行覆盖）/性能压测（无需求支撑）
       ✔ 停止条件（达成即停）: ①P1 三条已知边界全部钉住 ②ttf/refs 各有畸形输入负例组 ③CLI 每个错误分支有断言 ④抽样 3-5 条新测试做 mutation 自检（临时破坏对应代码验证会红，防永绿假测试）⑤清单做完即停、不设滚动任务
       ✔ 执行结果（2026-10-27/28 收口，137 测试全绿，114→137）：P1 契约钉子×3；ttf 负例×4——**抓到 2 处真 panic**（name 表越界裸切片，读/写两路径，修复随负例）+ u16 字符串区溢出保护；refs×4；CLI 错误路径×5（空树/缺字体/垃圾字体宽容降级/缺 CSS/落盘失败注入）；篡改 zip sha256 拒收×1（故障注入，与"下载失败回落"互补）；CommonMark 0.31.2 spec 652 例批测（语料入 fixtures，一次全绿，0.06s）；规模边界×4——**抓到 1 处真栈溢出**（1000 层深目录，探测/nav/Drop 递归链；修复=目录深度上限 32 + 超限跳过 warning + 全跳过视为无源，口径落 30-frontends.md）；mutation 自检 4 条红绿验证；fuzz 常驻化=core/fuzz 两目标+种子语料+README；**正式一轮已跑**（2026-10-28 WSL/ASAN 各 300s：web 130.4 万次零崩溃；ttf 首轮抓到 ttcf 畸形集合头致 ttf-parser 0.25.1 内部断言 panic——30 字节样本提炼为回归测试，修复=directory_sane 目录预检，复跑 2560.8 万次零崩溃）；缓存不可写入口登记不测原因（organization.md 已知不可测项）；fonts.rs 缓存 stash 抽 helper+共享串行锁（修并行互踩）；回归纪律成文 organization.md
+  发布前 · 测试收尾（2026-10-28 分支覆盖定位 + fuzz 首轮留下的余量，约 16~22 条一个工作单元；与 Releases 流水线并行不阻塞）:
+    ☐ 分支洼地补测（llvm-cov --branch 定位的两处真洼地，约 8~10 条）:
+      ☐ paths.rs sniff 魔数链单测（40.9%→~95%；src 内嵌）：JPEG FF-D8-FF / GIF87a / GIF89a / BM / RIFF+WEBP / <svg / <?xml 各 1 条 + 声明扩展名与魔数冲突时优先级 1 条
+      ☐ code_wrap.rs Hard 模式 pass 层测试（41.7%；走 converter 全链 2~3 条）：width=0 守卫、一个 pre 多文本节点跨 span 连续计数、get_text None 病态节点跳过（现单测只盖 wrap_chars 纯函数，golden 全走默认 PreWrap）
+    ☐ fuzz 语料回灌（一次性）：WSL ~/trans-fuzz 的 web 语料 3888 条会被清盘——人工筛几十条高覆盖差异样本入 fuzz/corpus/（README 既有规矩），否则下轮从头长
+    ☐ 错误分支 mock 注入（asset_resolve 61%/web 61.9%/highlight 57.1% 的分支类，约 8~12 条）:
+      ☐ asset_resolve：MemVfs 塞超大文件超 max_bytes 拒 / MockFetcher 回 404、非图片 content-type、半截 PNG 字节 / 畸形 base64 data: URI
+      ☐ web：脏 HTML 边角 fixture 追加——坏 charset 声明 / 重复 id / 超深嵌套 / 巨属性值
+      ☐ mdbook：SUMMARY 引用不存在文件 / {{#include}} 目标越界行号 / 循环 include
+      ☐ highlight：未知语言 tag 回退 / 超长单 token
+      ☐ polite（真回环 server）：连接中途 reset / 无 Content-Length 截断
+    ☐ 断电/信号类（先决策后测试——顺序不能反）：先拍板是否改 tmp+rename 原子落盘（消费方对半文件的现状处理是解析失败报错不静默错，改造是体验级收益非正确性级）；拍板后进程级注入 1~2 条（spawn 写大书拉长写窗口，写盘阶段 SIGKILL/TerminateProcess，断言磁盘状态符合决策口径）。SIGTERM 干净退出测试仅 Linux/CI 有意义（Windows 无信号语义，当前也无 handler，kill 即死无中间态可保护）——并入同一决策。死进程无对应物（one-shot CLI 无 worker，三期服务化再议）
     ☐ GitHub Releases 首发准备（CI 交叉构建流水线：tag → 六目标 → 资产上传 + mutool 冒烟步 + MSRV 门 + 资产自举烟测步（后三项见测试补充战役）；版本基线；分发决策见 docs/adr/0013）。流水线搭建可与上面并行先行——顺带实证 rustls+ring 六目标交叉；tag 首发/版本基线定稿须在真机抽验通过之后（真机抽验已全过，本项不再阻塞）
     ☐ crates.io 名称可用性确认（暂缓非放弃——ADR 0013；上架时按其两条路径另立决策）
   二期 · GUI（暂缓）:
