@@ -2433,6 +2433,8 @@ dependencies = [
  "globset",
  "html5ever",
  "scraper",
+ "serde",
+ "serde_json",
  "sha2",
  "subsetter",
  "syntect",

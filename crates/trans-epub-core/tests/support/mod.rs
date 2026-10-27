@@ -37,6 +37,34 @@ pub(crate) fn convert_config(name: &str, config: ResolvedConfig) -> BuildOutput 
     convert_with(name, config)
 }
 
+/// 自带 Fetcher 的转换入口（故障注入用：MockFetcher 决定每个 URL 的
+/// 应答形态——下载失败 / 篡改内容 / 超限等）。
+pub(crate) fn convert_config_with_fetcher(
+    name: &str,
+    config: ResolvedConfig,
+    fetcher: MockFetcher,
+) -> BuildOutput {
+    let vfs = MemVfs::from_dir(format!("{FIXTURES}/{name}")).expect("fixture dir readable");
+    let io = Io {
+        fetcher: Arc::new(fetcher),
+        progress: Arc::new(NoProgress),
+    };
+    Converter::new()
+        .convert(&Source::Vfs(Arc::new(vfs)), &config, &io)
+        .expect("conversion succeeds")
+}
+
+/// 直接给定 Vfs 的转换入口（规模边界测试构造内存书源用）。
+pub(crate) fn convert_vfs(vfs: MemVfs, config: ResolvedConfig) -> BuildOutput {
+    let io = Io {
+        fetcher: Arc::new(MockFetcher::new()),
+        progress: Arc::new(NoProgress),
+    };
+    Converter::new()
+        .convert(&Source::Vfs(Arc::new(vfs)), &config, &io)
+        .expect("conversion succeeds")
+}
+
 fn convert_with(name: &str, config: ResolvedConfig) -> BuildOutput {
     let vfs = MemVfs::from_dir(format!("{FIXTURES}/{name}")).expect("fixture dir readable");
     let fetcher = MockFetcher::new().insert(REMOTE_PNG_URL, png_bytes(), "image/png");

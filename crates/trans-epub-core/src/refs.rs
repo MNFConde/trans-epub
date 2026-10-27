@@ -214,4 +214,80 @@ mod tests {
         assert_eq!(natural_cmp("a2", "a10"), Ordering::Less);
         assert_eq!(natural_cmp("a02", "a2"), Ordering::Greater); // 前导零少者优先
     }
+
+    // ------------------------------------------------------------------------
+    // 异常 href 负例（P2 底线：不 panic、拒绝即 None；畸形编码宽容降级）
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn resolve_rejects_protocol_like_and_empty_hrefs() {
+        let base = rel("guide/ch01.md");
+        for href in [
+            "javascript:alert(1)",
+            "data:image/png;base64,iVBOR",
+            "mailto:a@b.c",
+            "tel:+1234",
+            "ftp://files/x",
+            "//cdn.example.com/x.png", // 协议相对 URL 也是外部
+            "",
+            "#",
+        ] {
+            assert!(
+                resolve_rel(&base, href).is_none(),
+                "外部协议/空 href 应拒绝：{href:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_survives_malformed_percent_and_unicode() {
+        let base = rel("guide/ch01.md");
+        // 尾缀孤立 % 与非两位-hex 的 %：原样保留字符，不失败不 panic
+        assert_eq!(
+            resolve_rel(&base, "weird%zz.md").unwrap().as_str(),
+            "guide/weird%zz.md"
+        );
+        assert_eq!(
+            resolve_rel(&base, "tail%.md").unwrap().as_str(),
+            "guide/tail%.md"
+        );
+        // 解码后混入非法字符（\ : NUL）即拒绝——防穿越
+        assert!(resolve_rel(&base, "a%5Cb.md").is_none(), "%5C=反斜杠须拒");
+        assert!(resolve_rel(&base, "a%3Ab.md").is_none(), "%3A=冒号须拒");
+        assert!(resolve_rel(&base, "a%00b.md").is_none(), "%00=NUL 须拒");
+        // unicode 路径段正常解析
+        assert_eq!(
+            resolve_rel(&base, "图片/封面.png").unwrap().as_str(),
+            "guide/图片/封面.png"
+        );
+    }
+
+    #[test]
+    fn resolve_deep_dotdots_and_very_long_paths() {
+        let base = rel("a/b/c/ch01.md");
+        assert_eq!(
+            resolve_rel(&base, "../../../x.md").unwrap().as_str(),
+            "x.md"
+        );
+        assert!(resolve_rel(&base, "../../../../x.md").is_none(), "越出根");
+        // 千段路径不 panic、段数正确
+        let long = vec!["seg"; 1000].join("/");
+        let out = resolve_rel(&base, &long).unwrap();
+        assert_eq!(out.as_str().split('/').count(), 3 + 1000);
+    }
+
+    #[test]
+    fn natural_ordering_edge_inputs() {
+        assert_eq!(natural_cmp("", ""), Ordering::Equal);
+        assert_eq!(natural_cmp("", "a"), Ordering::Less);
+        assert_eq!(
+            natural_cmp("007", "7"),
+            Ordering::Greater,
+            "等值去零后前导零多者靠后"
+        );
+        // 千位数字串按数值语义比较：999 个 9 < 1001 位
+        let big = "9".repeat(999);
+        let bigger = "1".repeat(1001);
+        assert_eq!(natural_cmp(&big, &bigger), Ordering::Less);
+    }
 }

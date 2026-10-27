@@ -1,6 +1,6 @@
 # trans-epub 协作规则
 
-trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差异化是"编程文档保真"（构建期语法高亮、代码长行处理、mdBook 语义、链接改写）。当前状态：MVP1–MVP3 已落地、门禁全绿；发布前质量补强全部完成——真实站实抓、内嵌字体管线（TransEpub Mono/OFL 义务）、产品观察打磨、mutool 引擎冒烟门（scripts/mutool-smoke.sh）、真机抽验三档全过（Koodo 2.4.6 CDP 驱动 + KOReader WSL 构建 headless 渲染 + mutool 引擎）；License AGPL-3.0-only（ADR 0012）、分发 GitHub Releases 且 crates.io 暂缓（ADR 0013），用户手册 `docs/guide/` 与根 README 就位；下一步 Releases 首发（CI 流水线 + 版本基线，含 mutool 冒烟步）与 Apple Books 真机补验（暂缺设备）。
+trans-epub —— markdown / mdBook / 静态文档站 → EPUB3 转换器，差异化是"编程文档保真"（构建期语法高亮、代码长行处理、mdBook 语义、链接改写）。当前状态：MVP1–MVP3 已落地、门禁全绿；发布前质量补强全部完成——真实站实抓、内嵌字体管线（TransEpub Mono/OFL 义务）、产品观察打磨、mutool 引擎冒烟门（scripts/mutool-smoke.sh）、真机抽验三档全过（Koodo 2.4.6 CDP 驱动 + KOReader WSL 构建 headless 渲染 + mutool 引擎）；License AGPL-3.0-only（ADR 0012）、分发 GitHub Releases 且 crates.io 暂缓（ADR 0013），用户手册 `docs/guide/` 与根 README 就位；测试补充战役已收口（2026-10-27：136 测试全绿 +22，CommonMark 0.31.2 spec 652 例批测一次全绿、fuzz 常驻目标 core/fuzz、抓真缺陷三处——ttf name 表两处越界 panic 与千层深目录栈溢出均已修复，测试组织细则 docs/testing/organization.md）；下一步 Releases 首发（CI 流水线 + 版本基线，含 mutool 冒烟步 + MSRV 门 + 资产自举烟测步 + fuzz 正式一轮）与 Apple Books 真机补验（暂缺设备）。
 
 ## 阅读顺序
 

@@ -306,3 +306,125 @@ fn list_fetch_respects_page_cap() {
         result.warnings
     );
 }
+
+// ---------------------------------------------------------------------------
+// 契约钉子：已定型语义（40-fetch.md 已知边界 / guide/cli.md 旗标口径）
+// ---------------------------------------------------------------------------
+
+/// 任何请求都"重定向"到固定最终 URL 的 stub：模拟起点 host 经 301 跳到
+/// 新域后 fetch 返回的 page.url 是最终域（PoliteFetcher 行为）。
+struct RedirectingFetcher {
+    final_url: url::Url,
+    body: &'static str,
+}
+
+impl trans_epub_contract::source::Fetcher for RedirectingFetcher {
+    fn fetch(
+        &self,
+        _url: &url::Url,
+    ) -> Result<trans_epub_contract::source::FetchedPage, trans_epub_contract::source::FetchError>
+    {
+        Ok(trans_epub_contract::source::FetchedPage::from_bytes(
+            self.final_url.clone(),
+            self.body.as_bytes().to_vec(),
+            "text/html",
+        ))
+    }
+}
+
+/// 契约钉子（40-fetch.md 已知边界）：BFS 的同域判定按**起点 host**，
+/// 不按重定向后的最终 host——起点域经重定向换域后，站内链接（以最终
+/// URL 为 base 解析）全被判跨域 → 0 发现。保守正确但反直觉；改此语义
+/// 须先动本测试与 40-fetch.md。
+#[test]
+fn crawl_same_origin_is_judged_by_start_host_not_final_url() {
+    let fetcher = RedirectingFetcher {
+        final_url: "https://final.dev/".parse().unwrap(),
+        body: r#"<a href="/guide/intro">intro</a>"#,
+    };
+
+    // 起点在 start.dev，重定向落在 final.dev：链接以 final.dev 为 base
+    // 解析，与起点 start.dev 不同域 → 不入队，仅起点页（按最终 URL 记账）
+    let redirected = discover::crawl(
+        &fetcher,
+        &"https://start.dev/".parse().unwrap(),
+        &DiscoverCfg::default(),
+        None,
+    );
+    assert_eq!(
+        urls_of(&redirected),
+        vec!["https://final.dev/"],
+        "重定向后站内链接应被判跨域（保守口径）"
+    );
+    assert!(redirected.warnings.is_empty(), "{:?}", redirected.warnings);
+
+    // 对照：起点直接用最终域（正常按 URL 应答）→ 同一条链接正常发现
+    let direct_fetcher = fetcher_with(&[
+        (
+            "https://final.dev/",
+            r#"<a href="/guide/intro">intro</a>"#,
+            "text/html",
+        ),
+        ("https://final.dev/guide/intro", "<p>1</p>", "text/html"),
+    ]);
+    let direct = discover::crawl(
+        &direct_fetcher,
+        &"https://final.dev/".parse().unwrap(),
+        &DiscoverCfg::default(),
+        None,
+    );
+    assert_eq!(
+        urls_of(&direct),
+        vec!["https://final.dev/", "https://final.dev/guide/intro"],
+        "换最终域名起点后同链接立刻满发现"
+    );
+}
+
+/// 契约钉子（guide/cli.md 口径）：include/exclude glob 对**去前导 `/` 的
+/// URL path** 匹配——`guide/*` 命中，`/guide/*` 带斜杠永不命中。
+#[test]
+fn include_glob_matches_path_without_leading_slash() {
+    let fetcher = fetcher_with(&[
+        (
+            "https://a.dev/",
+            r#"<a href="/guide/one">g</a> <a href="/blog/two">b</a>"#,
+            "text/html",
+        ),
+        ("https://a.dev/guide/one", "<p>g1</p>", "text/html"),
+        ("https://a.dev/blog/two", "<p>b1</p>", "text/html"),
+    ]);
+
+    let with_slash_stripped = DiscoverCfg {
+        max_depth: 1,
+        include: vec!["guide/*".to_string()],
+        ..DiscoverCfg::default()
+    };
+    let result = discover::crawl(
+        &fetcher,
+        &"https://a.dev/".parse().unwrap(),
+        &with_slash_stripped,
+        None,
+    );
+    assert_eq!(
+        urls_of(&result),
+        vec!["https://a.dev/", "https://a.dev/guide/one"],
+        "guide/* 命中 /guide/one，blog/two 不匹配"
+    );
+
+    let with_leading_slash = DiscoverCfg {
+        max_depth: 1,
+        include: vec!["/guide/*".to_string()],
+        ..DiscoverCfg::default()
+    };
+    let result = discover::crawl(
+        &fetcher,
+        &"https://a.dev/".parse().unwrap(),
+        &with_leading_slash,
+        None,
+    );
+    assert_eq!(
+        urls_of(&result),
+        vec!["https://a.dev/"],
+        "带前导斜杠的 pattern 永不命中（path 已去斜杠），仅起始页入账"
+    );
+}

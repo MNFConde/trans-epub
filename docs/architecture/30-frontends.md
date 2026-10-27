@@ -33,6 +33,8 @@ probe 只看文件名与目录形态（廉价），规则按优先级：
 
 默认排除：`.` 开头的文件/目录；`StructureCfg.include/exclude` 可覆盖。歧义情形（如同时有数字前缀和 front matter order）按上表优先级取高者并记 warning。
 
+**目录嵌套深度上限 32**（2026-10 规模测试补强）：探测树及下游排序/nav/Drop 是递归实现，病态深目录（实测 1000 层）会栈溢出；超过 32 层目录的文件跳过并记 warning，全部文件被跳过时视为无 md 源。合法书源层级远低于此限。
+
 ### load：归一化
 
 - **comrak 方言**：GFM 基线（表格/删除线/任务列表）+ front matter 解析（TOML，`title` / `order` 两字段；`---`…`---` 包裹，解析失败保守当普通内容）+ 脚注 + admonition（GitHub alerts 经 comrak `AlertStyleType::Semantic` 渲染为 `<aside class="admonition note">`（类名为 note/tip/important/warning/caution），样式由 writer 的 admonition.css 负责）。

@@ -3,8 +3,39 @@
 //! 不出义务页、exact 下载失败回落 preset（warning 可追溯）。
 
 use trans_epub_contract::config::{FontSource, FontSubsetMode, ResolvedConfig};
+use trans_epub_contract::testing::MockFetcher;
 
-use crate::support::{convert_config, utf8, zip_entries};
+use crate::support::{convert_config, convert_config_with_fetcher, utf8, zip_entries};
+
+/// exact 回落类测试共享的串行锁：缓存 stash/restore 在并行测试间会
+/// 交错（A stash 的文件被 B 的 restore 提前恢复 → A 误走缓存命中路径）。
+static EXACT_CACHE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 隔离字体缓存：本机 exact 端到端跑过的缓存会让下载被跳过、测试走
+/// 成功路径而非回落路径。
+fn stash_font_cache() {
+    let cache = std::env::temp_dir().join("trans-epub-fonts");
+    if let Ok(dir) = std::fs::read_dir(&cache) {
+        for entry in dir.flatten() {
+            let p = entry.path();
+            if p.extension().is_some_and(|e| e == "ttf") {
+                let _ = std::fs::rename(&p, p.with_extension("stash"));
+            }
+        }
+    }
+}
+
+fn restore_font_cache() {
+    let cache = std::env::temp_dir().join("trans-epub-fonts");
+    if let Ok(dir) = std::fs::read_dir(&cache) {
+        for entry in dir.flatten() {
+            let p = entry.path();
+            if p.extension().is_some_and(|e| e == "stash") {
+                let _ = std::fs::rename(&p, p.with_extension("ttf"));
+            }
+        }
+    }
+}
 
 fn font_config(embed: bool, subset: FontSubsetMode, source: FontSource) -> ResolvedConfig {
     let mut config = ResolvedConfig::default();
@@ -75,20 +106,8 @@ fn fonts_builtin_preset_embeds_subset_and_license_page() {
 
 #[test]
 fn fonts_builtin_exact_falls_back_to_preset_on_download_failure() {
-    // 隔离字体缓存：本机 exact 端到端跑过的缓存会让下载被跳过、
-    // 测试走成功路径而非回落路径
-    let cache = std::env::temp_dir().join("trans-epub-fonts");
-    let stash: Vec<_> = std::fs::read_dir(&cache)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            let _ = std::fs::rename(p, p.with_extension("stash"));
-            false
-        })
-        .collect();
-    let _ = stash;
+    let _guard = EXACT_CACHE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    stash_font_cache();
 
     // MockFetcher 不含钉版 URL → 下载失败 → 回落 preset + warning
     let output = convert_config(
@@ -96,15 +115,7 @@ fn fonts_builtin_exact_falls_back_to_preset_on_download_failure() {
         font_config(true, FontSubsetMode::Exact, FontSource::Builtin),
     );
 
-    // 恢复缓存
-    if let Ok(dir) = std::fs::read_dir(&cache) {
-        for entry in dir.flatten() {
-            let p = entry.path();
-            if p.extension().is_some_and(|e| e == "stash") {
-                let _ = std::fs::rename(&p, p.with_extension("ttf"));
-            }
-        }
-    }
+    restore_font_cache();
 
     let font = embedded_font_bytes(&output);
     assert!(!font.is_empty(), "回落后仍应内嵌 preset 子集");
@@ -120,6 +131,46 @@ fn fonts_builtin_exact_falls_back_to_preset_on_download_failure() {
     assert!(
         warned,
         "下载失败须伴随 warning（回落本身由 preset 字节断言）：{:?}",
+        output.report.warnings
+    );
+}
+
+/// 故障注入：钉版 URL 下载"成功"但字节被换（半截 zip / 篡改 / 劫持）——
+/// sha256 钉版必须拒收并回落 preset。与上一条互补：那条测传输失败，
+/// 这条测**内容不对**——校验逻辑本身是安全边界。
+#[test]
+fn fonts_builtin_exact_rejects_tampered_zip_bytes() {
+    let _guard = EXACT_CACHE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    stash_font_cache();
+
+    const PINNED_URL: &str = "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-CN-unhinted.zip";
+    let tampered = MockFetcher::new().insert(
+        PINNED_URL,
+        "definitely not the pinned zip".as_bytes(),
+        "application/zip",
+    );
+    let output = convert_config_with_fetcher(
+        "flat",
+        font_config(true, FontSubsetMode::Exact, FontSource::Builtin),
+        tampered,
+    );
+
+    restore_font_cache();
+
+    let font = embedded_font_bytes(&output);
+    assert_eq!(
+        font.len(),
+        include_bytes!("../../assets/fonts/TransEpubMono-Regular.subset.ttf").len(),
+        "拒收篡改字节后回落 preset"
+    );
+    let warned = output
+        .report
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("sha256 mismatch"));
+    assert!(
+        warned,
+        "校验失败须 warning 且信息含 mismatch：{:?}",
         output.report.warnings
     );
 }

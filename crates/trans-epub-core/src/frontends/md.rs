@@ -29,6 +29,11 @@ use crate::refs;
 /// 探测期 front matter 的最大读取量（字节）——探测必须廉价。
 const FM_PEEK_LIMIT: usize = 64 * 1024;
 
+/// 目录嵌套深度上限（文件所在目录层数）。探测树及下游排序 / nav /
+/// Drop 是递归实现，超深输入会栈溢出（规模边界测试实测 1000 层爆栈，
+/// 2026-10）；合法书源层级远低于 32。
+const MAX_DIR_DEPTH: usize = 32;
+
 pub struct MdFrontend;
 
 impl Frontend for MdFrontend {
@@ -299,6 +304,17 @@ fn detect(
 
     let mut md_count = 0usize;
     for entry in visible {
+        // 目录嵌套深度上限：探测树 / 排序 / nav 渲染 / Drop 全链是递归
+        // 实现，病态深目录（实测 1000 层）会栈溢出；超限文件跳过 +
+        // warning（口径见 30-frontends.md）。合法书源层级远低于此。
+        if entry.path.as_str().split('/').count() > MAX_DIR_DEPTH + 1 {
+            root.warn(Warning::new(
+                WarningCode::StructureAmbiguous,
+                Some(SourceKey::Path(entry.path.clone())),
+                format!("directory nesting deeper than {MAX_DIR_DEPTH} levels; skipped"),
+            ));
+            continue;
+        }
         md_count += 1;
         let name = entry.path.file_name().to_string();
         let stem = stem_of(&name);
@@ -331,6 +347,11 @@ fn detect(
         } else {
             dir.files.push(chapter);
         }
+    }
+    if md_count == 0 {
+        // 全部文件因深度超限被跳过——视为无 md 源（爆栈修复的兜底：
+        // 空书不能算匹配，否则下游产出一本 0 章的"成功"书）
+        return None;
     }
     sort_dir(&mut root);
 

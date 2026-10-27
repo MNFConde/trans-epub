@@ -53,7 +53,9 @@ fn name_records(font: &[u8]) -> Option<(usize, usize, Vec<NameRecord>)> {
     if len < 6 {
         return None;
     }
-    let t = &font[off..off + len];
+    // 目录声称的 offset/length 可能越界（畸形字体），get 而非裸切片
+    let end = off.checked_add(len)?;
+    let t = font.get(off..end)?;
     let count = u16_at(t, 2)? as usize;
     let str_off = u16_at(t, 4)? as usize;
     let mut recs = Vec::with_capacity(count);
@@ -161,9 +163,13 @@ pub fn rename_family(
             4 => encode_for(rec.platform, full_name),
             6 => encode_for(rec.platform, ps_name),
             16 | 17 => continue,
-            _ => font[table_off + str_off + rec.offset as usize
-                ..table_off + str_off + rec.offset as usize + rec.length as usize]
-                .to_vec(),
+            _ => {
+                // 记录声称的 offset/length 可能指向字符串区之外（畸形字体）：
+                // 取不到按空串保留，其余记录仍可正常改名
+                let start = table_off + str_off + rec.offset as usize;
+                let end = start.checked_add(rec.length as usize)?;
+                font.get(start..end).unwrap_or(&[]).to_vec()
+            }
         };
         out.push(Out {
             platform: rec.platform,
@@ -175,6 +181,11 @@ pub fn rename_family(
     }
 
     let count = out.len() as u16;
+    // name 表的字符串区偏移/长度是 u16 字段——超限时 as u16 会静默 wrap
+    // 产出坏字体，宁可放弃改名
+    if 6 + out.len() * 12 > u16::MAX as usize {
+        return None;
+    }
     let mut table = Vec::new();
     table.extend_from_slice(&0u16.to_be_bytes()); // format 0
     table.extend_from_slice(&count.to_be_bytes());
@@ -189,6 +200,9 @@ pub fn rename_family(
         table.extend_from_slice(&(o.bytes.len() as u16).to_be_bytes());
         table.extend_from_slice(&(strings.len() as u16).to_be_bytes());
         strings.extend_from_slice(&o.bytes);
+    }
+    if strings.len() > u16::MAX as usize {
+        return None;
     }
     table.extend_from_slice(&strings);
 
@@ -295,5 +309,89 @@ mod tests {
                 "未请求的汉字不应保留轮廓"
             );
         }
+    }
+
+    // ------------------------------------------------------------------------
+    // 畸形输入负例（P2 底线：不 panic、失败返回 None）——用户 --font-file
+    // 可传入任意字节，读/写两路径都不得 panic
+    // ------------------------------------------------------------------------
+
+    /// 最小 sfnt 骨架：头部声明 1 个表，目录项按给定 offset/length 声明
+    /// name 表（不校验其是否落在文件内——这正是要测的谎言）。
+    fn font_declaring_name_table(offset: u32, length: u32, tail: &[u8]) -> Vec<u8> {
+        let mut f = Vec::new();
+        f.extend_from_slice(&0x0001_0000u32.to_be_bytes()); // sfnt v1
+        f.extend_from_slice(&1u16.to_be_bytes()); // numTables
+        f.extend_from_slice(&[0u8; 6]); // searchRange 等保留字段
+        f.extend_from_slice(b"name"); // tag
+        f.extend_from_slice(&0u32.to_be_bytes()); // checksum
+        f.extend_from_slice(&offset.to_be_bytes());
+        f.extend_from_slice(&length.to_be_bytes());
+        f.extend_from_slice(tail);
+        f
+    }
+
+    #[test]
+    fn malformed_truncated_fonts_return_none() {
+        for bytes in [
+            &b""[..],
+            b"nope",
+            b"\x00\x01\x00\x00\x00\x05\x00\x00", // 声称 5 表但无目录项
+        ] {
+            assert!(family_name(bytes).is_none(), "截断输入应 None：{bytes:?}");
+            assert!(rename_family(bytes, "F", "F", "F", "n").is_none());
+        }
+    }
+
+    #[test]
+    fn malformed_name_table_bounds_return_none_not_panic() {
+        // 目录声称的 name 表 offset/length 越出文件实际长度——修复前
+        // 这里是裸切片 panic（font[off..off+len]）；现在读/写两路径都 None
+        for (off, len) in [(1000u32, 10u32), (28, 1_000_000), (u32::MAX, 4)] {
+            let font = font_declaring_name_table(off, len, b"garbage-tail");
+            assert!(
+                family_name(&font).is_none(),
+                "越界 name 表声明应 None：off={off} len={len}"
+            );
+            assert!(
+                rename_family(&font, "F", "F", "F", "n").is_none(),
+                "rename 同口径：off={off} len={len}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_record_claims_outside_string_area_survive_rename() {
+        // name 表本体有效，但 nameID=5 记录的 offset/length 指向字符串区
+        // 之外——原样保留路径按空串保留，其余记录正常改名，产物结构有效
+        let name = "OrigFami";
+        let name_utf16: Vec<u8> = name.encode_utf16().flat_map(|u| u.to_be_bytes()).collect();
+        let mut t = Vec::new();
+        t.extend_from_slice(&0u16.to_be_bytes()); // format 0
+        t.extend_from_slice(&2u16.to_be_bytes()); // count
+        t.extend_from_slice(&30u16.to_be_bytes()); // stringOffset = 6 + 2*12
+        // 记录 1：nameID=5，off=9999 len=99（指向表外的谎言）
+        for v in [3u16, 1, 0x0409, 5, 99, 9999] {
+            t.extend_from_slice(&v.to_be_bytes());
+        }
+        // 记录 2：nameID=1，off=0 len=8（合法）
+        for v in [3u16, 1, 0x0409, 1, name_utf16.len() as u16, 0] {
+            t.extend_from_slice(&v.to_be_bytes());
+        }
+        t.extend_from_slice(&name_utf16);
+        let font = font_declaring_name_table(28, t.len() as u32, &t);
+
+        assert_eq!(family_name(&font).as_deref(), Some(name), "合法记录可读");
+        let renamed = rename_family(&font, "New Fam", "New Fam", "NewFam", "note")
+            .expect("越界记录不致命，改名仍成功");
+        assert_eq!(family_name(&renamed).as_deref(), Some("New Fam"));
+    }
+
+    #[test]
+    fn rename_rejects_strings_overflowing_u16_storage() {
+        // name 表字符串区偏移/长度是 u16 字段：70KB 修改声明必然超限——
+        // 宁可 None 也不产出偏移 wrap 后的坏字体
+        let notice = "x".repeat(70 * 1024);
+        assert!(rename_family(VENDORED, "F", "F", "F", &notice).is_none());
     }
 }

@@ -6,3 +6,8 @@
 /.cairn/
 /.zcode/
 
+
+# fuzz 崩溃样本与覆盖率产物（种子语料 corpus/ 入库）
+crates/*/fuzz/artifacts/
+crates/*/fuzz/coverage/
+crates/*/fuzz/target/

@@ -181,3 +181,51 @@ fn too_large_response_is_rejected() {
     let result = fetcher.fetch(&base.join("/big").unwrap());
     assert!(matches!(result, Err(FetchError::TooLarge(_))), "{result:?}");
 }
+
+/// 契约钉子：`Fetcher::fetch_direct`（用户点名单资源）跳过 robots，而默认
+/// `fetch` 仍受 robots 约束——github.com robots 禁 release 资产路径曾误拒
+/// 钉版字体下载（2026-10）。跳 robots 不等于绕过 scheme 白名单与大小上限。
+#[test]
+fn fetch_direct_skips_robots_while_fetch_stays_bound() {
+    let server = MockServer::new();
+    server
+        .route(
+            "/robots.txt",
+            200,
+            "text/plain",
+            "User-agent: *\nDisallow: /releases/\n",
+        )
+        .route("/releases/font.zip", 200, "application/zip", "ZIPDATA");
+    let base = server.serve();
+    let asset = base.join("/releases/font.zip").unwrap();
+
+    let fetcher = PoliteFetcher::new(fast_config());
+
+    // 对照：默认 fetch 遵 robots 被拒
+    assert!(
+        matches!(
+            fetcher.fetch(&asset),
+            Err(FetchError::Denied(ref msg)) if msg.contains("robots")
+        ),
+        "默认 fetch 必须仍受 robots 约束"
+    );
+
+    // 正例：点名单资源跳过 robots 拿到内容
+    let page = fetcher
+        .fetch_direct(&asset, None)
+        .expect("点名单资源跳过 robots");
+    assert_eq!(page.body, b"ZIPDATA");
+
+    // max_bytes 显式上限取代配置默认（None 时用配置默认）
+    assert!(matches!(
+        fetcher.fetch_direct(&asset, Some(4)),
+        Err(FetchError::TooLarge(_))
+    ));
+
+    // scheme 白名单不因跳 robots 而失效
+    let ftp = "ftp://example.com/x.zip".parse().unwrap();
+    assert!(matches!(
+        fetcher.fetch_direct(&ftp, None),
+        Err(FetchError::Denied(_))
+    ));
+}

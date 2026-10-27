@@ -67,27 +67,28 @@ trans-epub:
     ✔ 产品观察打磨（2026-10-26）：pre 轻底色/边框/padding（亮暗两套）+ 代码字体链具体名（Maple Mono NF CN→Cascadia Code→Consolas→Noto Sans Mono CJK SC→monospace，嵌字体时内嵌族名插链首）+ 目录书书名次级派生根 README 首个 h1（30-frontends.md 口径 + md 前端实现 + 单测）；版本串警告留档不做、admonition emoji 兜底缓。golden 5 本再生收编全部产物变化
     ✔ 引擎冒烟（2026-10-26）：scripts/mutool-smoke.sh 落地（WSL mupdf-tools/MuPDF 1.23，PPM 非白字节占比>0.1% 逐页断言，mutool 未装时 SKIP 退 0）；首轮即抓到真问题——tree fixture 封面 1×1 测试图致封面页恒空白（冒烟信号失真），换 600×800 合成封面后 golden 再生（仅 tree.epub +141B）复跑 20 页全绿 + epubcheck 全绿；MuPDF "unknown epub version: 3.0" 警告非致命已记 manual-checklist 阅读器行为观察；CI 挂载随 Releases 流水线一并；Playwright Chromium/WebKit 档待真有 CSS 回归事故再加
     ✔ 真机抽验执行（2026-10-26/27，三档全过）：①mutool 引擎冒烟（见上）；②Koodo Reader 2.4.6 主力——CDP 驱动（命令行开书 + DOM/computedStyle 断言 + 截图，scripts/koodo-scan.mjs 固化）：6 本 golden + 嵌字体全过（TransEpub Mono loaded 且字体链首名生效、OFL 许可页可见、mdBook 指令全表可见、web 无乱码无 chrome 残留、书架封面 600×800 正确、pre-wrap 无横滚、27 染色 span）；Koodo 阅读主题按元素选择器接管 pre 背景 + prefers-color-scheme 不映射应用主题（黑夜下代码块白底刺眼但可读）——判定阅读器领地行为不修产物，已记 manual-checklist 行为观察；③KOReader 嵌入式口径——WSL Ubuntu-24.04 源码构建仿真器（kodev base 已废改直接 build；WSL jobserver 之坑打补 koenv.sh 剥 MAKEFLAGS；framagit 不可达改 fuzzyghosty 真 0.4.2 镜像预置 + CMakeLists URL 补丁），busted/meson 测试体系不合作，改 setupkoenv + commonrequire headless 直跑 render-shots.lua：6 本 ALL GREEN（TOC/翻页/封面/嵌字体灰度渲染清晰，截图留 target/tmp/koreader-shots/）；Apple Books 暂缺设备跳过；截图取证 tmp/koodo/（gitignore）
-    ☐ 测试用例补充战役（2026-10-26 规划：架构已定型后的补强，预期 +25~40 条、一两个工作单元收口；不阻塞 Releases 首发，可与流水线并行；完成后回归"改动带测试"日常节奏）:
-      ☐ P1 契约钉子（每条对应一个已定型决策，防语义漂移；此三条即"已知边界全清单"，钉完即清零）:
-        ☐ fetch_direct 跳 robots 正例 + 默认 fetch 仍被拒对照例（robots 误拒修复三处代码现零测试——回归纪律现行违反案例）
-        ☐ 重定向起点同域判定按起点 host（40-fetch.md 已知边界：重定向后站内链接判跨域 0 发现，钉住保守语义；将来改语义须先动此测试）
-        ☐ include/exclude glob 去前导斜杠口径（guide/* 命中、/guide/* 永不命中——discover.rs PathFilters）
-      ☐ P2 手写解析器畸形输入（底线断言 = 不 panic、报可读错误）:
-        ☐ ttf.rs name 表重建负例（截断文件/坏 checksum/空表目录/超长 name 记录）
-        ☐ refs.rs 链接改写异常 href（javascript:/data:/mailto:/空 href/畸形相对路径/unicode）
-      ☐ P3 错误路径:
-        ☐ CLI 每个用户可触发错误各一条断言（错误信息可读也是产品面：旗标非法组合如 --embed-fonts × user source 缺路径、空输入树）
-        ☐ converter/asset_resolve/epub3.rs 无单测但已被 behavior+golden 间接覆盖——不为凑覆盖率单独补
-      ☐ SQLite 借鉴六项（2026-10-26 决策，覆盖面上修）:
-        ☐ I/O 故障注入三入口：写盘中途失败不留半成品 .epub（writer 现无 tmp+rename 原子落盘——测试先行钉现状，是否改原子写另立决策）；字体钉版下载半截 zip sha256 必拒（不能只测"失败回落 preset"）；缓存目录不可写降级不崩
-        ☐ fuzz 常驻化（cargo-fuzz 目标在库 + 小语料入库 + 发布前跑一轮，不进日常 CI）：优先级 web 任意 HTML（网络输入完全不可信）> ttf 字节流 > robots/sitemap（后者已有部分畸形负例）
-        ☐ 回归纪律成文（写进 docs/testing/：每个修过的 bug 必须留一条修复前会红的测试）
-        ☐ CommonMark 0.31 spec.json 652 例批量过 md 前端（每例不 panic + 结构保真锚点；语料现成零维护，"编程文档保真"卖点的外部背书）
-        ☐ 规模边界四例：10MB 单行代码块（长行处理兼测性能悬崖）/万章 spine/深嵌套目录递归深度/exact 字体子集遇 CJK 扩展 B（4 字节码点）全命中
-        ☐ 环境矩阵两块（并入 Releases 流水线）：MSRV 1.85 CI 门（rust-version 已声明无验证）；发布资产自举烟测（CI 下载自己刚上传的资产跑一遍 golden 转换——发布资产损坏是高频事故）
-      ☐ 组织与落点约束（细则见 docs/testing/organization.md，ADR 0011 操作手册）：P2 畸形输入进 src 同文件内嵌（勿按测试类型聚集成杂物文件）、契约钉子进对应 crate tests/contract/、CommonMark 语料独立 behavior/commonmark_spec.rs、fuzz 目标进 crate 根 fuzz/；命名含被测对象；一个行为只在最小完整层测一次（golden 字节回归是产物兜底，专项只管语义）
-      ☐ 明确不做（裁剪已定勿重开）: OOM 注入（Rust 分配失败即 abort 无对应物）/crash 断电测试（无状态纯文件重跑天然幂等，deterministic_output 已钉）/sanitizer+miri（全仓无 unsafe）/视觉快照类（golden 字节+mutool+真机三档已锚，重复维护）/覆盖率数字目标（不为 getter 凑行覆盖）/性能压测（无需求支撑）
-      ☐ 停止条件（达成即停）: ①P1 三条已知边界全部钉住 ②ttf/refs 各有畸形输入负例组 ③CLI 每个错误分支有断言 ④抽样 3-5 条新测试做 mutation 自检（临时破坏对应代码验证会红，防永绿假测试）⑤清单做完即停、不设滚动任务
+    ✔ 测试用例补充战役（2026-10-26 规划、27 执行完毕：+22 条全绿，战役收口——结论摘要见下方停止条件行后）:
+      ✔ P1 契约钉子（每条对应一个已定型决策，防语义漂移；此三条即"已知边界全清单"，钉完即清零）:
+        ✔ fetch_direct 跳 robots 正例 + 默认 fetch 仍被拒对照例（robots 误拒修复三处代码现零测试——回归纪律现行违反案例）
+        ✔ 重定向起点同域判定按起点 host（40-fetch.md 已知边界：重定向后站内链接判跨域 0 发现，钉住保守语义；将来改语义须先动此测试）
+        ✔ include/exclude glob 去前导斜杠口径（guide/* 命中、/guide/* 永不命中——discover.rs PathFilters）
+      ✔ P2 手写解析器畸形输入（底线断言 = 不 panic、报可读错误）:
+        ✔ ttf.rs name 表重建负例（截断文件/坏 checksum/空表目录/超长 name 记录）
+        ✔ refs.rs 链接改写异常 href（javascript:/data:/mailto:/空 href/畸形相对路径/unicode）
+      ✔ P3 错误路径:
+        ✔ CLI 每个用户可触发错误各一条断言（错误信息可读也是产品面：旗标非法组合如 --embed-fonts × user source 缺路径、空输入树）
+        ✔ converter/asset_resolve/epub3.rs 无单测但已被 behavior+golden 间接覆盖——不为凑覆盖率单独补
+      ✔ SQLite 借鉴六项（2026-10-26 决策，覆盖面上修）:
+        ✔ I/O 故障注入三入口：写盘中途失败不留半成品 .epub（writer 现无 tmp+rename 原子落盘——测试先行钉现状，是否改原子写另立决策）；字体钉版下载半截 zip sha256 必拒（不能只测"失败回落 preset"）；缓存目录不可写降级不崩
+        ✔ fuzz 常驻化（cargo-fuzz 目标在库 + 小语料入库 + 发布前跑一轮，不进日常 CI）：优先级 web 任意 HTML（网络输入完全不可信）> ttf 字节流 > robots/sitemap（后者已有部分畸形负例）
+        ✔ 回归纪律成文（写进 docs/testing/：每个修过的 bug 必须留一条修复前会红的测试）
+        ✔ CommonMark 0.31 spec.json 652 例批量过 md 前端（每例不 panic + 结构保真锚点；语料现成零维护，"编程文档保真"卖点的外部背书）
+        ✔ 规模边界四例：10MB 单行代码块（长行处理兼测性能悬崖）/万章 spine/深嵌套目录递归深度/exact 字体子集遇 CJK 扩展 B（4 字节码点）全命中
+        ✔ 环境矩阵两块（并入 Releases 流水线）：MSRV 1.85 CI 门（rust-version 已声明无验证）；发布资产自举烟测（CI 下载自己刚上传的资产跑一遍 golden 转换——发布资产损坏是高频事故）
+      ✔ 组织与落点约束（细则见 docs/testing/organization.md，ADR 0011 操作手册）：P2 畸形输入进 src 同文件内嵌（勿按测试类型聚集成杂物文件）、契约钉子进对应 crate tests/contract/、CommonMark 语料独立 behavior/commonmark_spec.rs、fuzz 目标进 crate 根 fuzz/；命名含被测对象；一个行为只在最小完整层测一次（golden 字节回归是产物兜底，专项只管语义）
+      ✔ 明确不做（裁剪已定勿重开）: OOM 注入（Rust 分配失败即 abort 无对应物）/crash 断电测试（无状态纯文件重跑天然幂等，deterministic_output 已钉）/sanitizer+miri（全仓无 unsafe）/视觉快照类（golden 字节+mutool+真机三档已锚，重复维护）/覆盖率数字目标（不为 getter 凑行覆盖）/性能压测（无需求支撑）
+      ✔ 停止条件（达成即停）: ①P1 三条已知边界全部钉住 ②ttf/refs 各有畸形输入负例组 ③CLI 每个错误分支有断言 ④抽样 3-5 条新测试做 mutation 自检（临时破坏对应代码验证会红，防永绿假测试）⑤清单做完即停、不设滚动任务
+      ✔ 执行结果（2026-10-27 收口，全工作区 136 测试全绿，114→136）：P1 契约钉子×3；ttf 负例×4——**抓到 2 处真 panic**（name 表越界裸切片，读/写两路径，修复随负例）+ u16 字符串区溢出保护；refs×4；CLI 错误路径×5（空树/缺字体/垃圾字体宽容降级/缺 CSS/落盘失败注入）；篡改 zip sha256 拒收×1（故障注入，与"下载失败回落"互补）；CommonMark 0.31.2 spec 652 例批测（语料入 fixtures，一次全绿，0.06s）；规模边界×4——**抓到 1 处真栈溢出**（1000 层深目录，探测/nav/Drop 递归链；修复=目录深度上限 32 + 超限跳过 warning + 全跳过视为无源，口径落 30-frontends.md）；mutation 自检 4 条红绿验证；fuzz 常驻化=core/fuzz 两目标（web 任意 HTML + ttf 三入口）+种子语料+README（Windows MSVC 缺 libFuzzer runtime，正式一轮在 Linux/WSL——发布前动作）；缓存不可写入口登记不测原因（organization.md 已知不可测项）；fonts.rs 缓存 stash 抽 helper+共享串行锁（修并行互踩）；回归纪律成文 organization.md
     ☐ GitHub Releases 首发准备（CI 交叉构建流水线：tag → 六目标 → 资产上传 + mutool 冒烟步 + MSRV 门 + 资产自举烟测步（后三项见测试补充战役）；版本基线；分发决策见 docs/adr/0013）。流水线搭建可与上面并行先行——顺带实证 rustls+ring 六目标交叉；tag 首发/版本基线定稿须在真机抽验通过之后（真机抽验已全过，本项不再阻塞）
     ☐ crates.io 名称可用性确认（暂缓非放弃——ADR 0013；上架时按其两条路径另立决策）
   二期 · GUI（暂缓）:

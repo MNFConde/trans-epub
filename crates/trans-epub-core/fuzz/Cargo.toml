@@ -1,0 +1,30 @@
+[package]
+name = "trans-epub-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+trans-epub-core = { path = ".." }
+trans-epub-contract = { path = "../../trans-epub-contract" }
+
+# 与主 workspace 隔离（cargo-fuzz 惯例）
+[workspace]
+
+[[bin]]
+name = "fuzz_web_html"
+path = "fuzz_targets/web_html.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_ttf"
+path = "fuzz_targets/ttf.rs"
+test = false
+doc = false
+bench = false
