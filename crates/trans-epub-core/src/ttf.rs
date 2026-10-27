@@ -238,9 +238,46 @@ pub fn rename_family(
 // 子集化
 // ---------------------------------------------------------------------------
 
+/// 目录健全性预检：ttf-parser 对畸形目录（如损坏的 `ttcf` 集合头）会
+/// 内部断言 panic 而非返回 Err（0.25.1 parser.rs 的 `offset + len <=
+/// u32::MAX`，fuzz 2026-10 实证），进它之前先按 sfnt 目录逐表校验——
+/// offset+length 必须落在文件内（比 u32::MAX 更严，且与我们自家解析
+/// 对越界声明的处理口径一致）。`ttcf` 集合直接拒绝：本管线的改名/
+/// 子集只面向单体 sfnt，对集合做任何改写都会损坏其余成员。
+fn directory_sane(font: &[u8]) -> bool {
+    if font.len() < 12 || font[0..4] == *b"ttcf" {
+        return false;
+    }
+    let num_tables = match u16_at(font, 4) {
+        Some(n) => n as usize,
+        None => return false,
+    };
+    // 畸形 numTables（65535 张表 × 16 字节）不可能是真字体，防 O(n) 空扫
+    if num_tables > 512 {
+        return false;
+    }
+    for i in 0..num_tables {
+        let rec = 12 + i * 16;
+        let (Some(off), Some(len)) = (u32_at(font, rec + 8), u32_at(font, rec + 12)) else {
+            return false;
+        };
+        let end = match (off as u64).checked_add(len as u64) {
+            Some(e) => e as usize,
+            None => return false,
+        };
+        if end > font.len() {
+            return false;
+        }
+    }
+    true
+}
+
 /// 按字符集子集化（`subsetter`，glyph 级；char→glyph 经 ttf-parser）。
 /// 返回的字体保留原 name 表——builtin 源随后须再过 [`rename_family`]。
 pub fn subset_to_chars(font: &[u8], chars: &str) -> Option<Vec<u8>> {
+    if !directory_sane(font) {
+        return None;
+    }
     let face = ttf_parser::Face::parse(font, 0).ok()?;
     let mut gids: Vec<u16> = vec![0]; // .notdef 必留
     for c in chars.chars() {
@@ -393,5 +430,22 @@ mod tests {
         // 宁可 None 也不产出偏移 wrap 后的坏字体
         let notice = "x".repeat(70 * 1024);
         assert!(rename_family(VENDORED, "F", "F", "F", &notice).is_none());
+    }
+
+    /// fuzz 回归（2026-10-28，30 字节崩溃样本原样嵌入）：损坏的 `ttcf`
+    /// 集合头让 ttf-parser 0.25.1 内部断言 panic（parser.rs:770，
+    /// `offset + len <= u32::MAX`）——修复为进库前目录预检。
+    #[test]
+    fn malformed_ttcf_collection_rejected_not_panic() {
+        let crash: &[u8] = &[
+            0x74, 0x74, 0x63, 0x66, 0x4f, 0x54, 0x54, 0x4f, 0xff, 0xff, 0xff, 0xff, 0x03, 0x04,
+            0x04, 0x04, 0x02, 0x02, 0x02, 0x02, 0x02, 0xfe, 0x07, 0x7e, 0x74, 0x02, 0x02, 0x02,
+            0x02, 0x02,
+        ];
+        assert!(family_name(crash).is_none());
+        assert!(rename_family(crash, "F", "F", "F", "n").is_none());
+        assert!(subset_to_chars(crash, "ab").is_none(), "ttcf 须在预检被拒");
+        // 单体 sfnt（VENDORED）不受预检影响
+        assert!(subset_to_chars(VENDORED, "Ab").is_some());
     }
 }

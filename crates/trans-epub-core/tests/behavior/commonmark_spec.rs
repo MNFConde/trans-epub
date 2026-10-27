@@ -50,14 +50,6 @@ const ISOMORPHIC_TAGS: &[&str] = &[
     "p",
 ];
 
-fn has_tag(html: &str, tag: &str) -> bool {
-    // 匹配 `<tag>` / `<tag ...>` / `<tag/>` 三种开头，防 `<em>` 误报成 `<email>`
-    html.contains(&format!("<{tag}>"))
-        || html.contains(&format!("<{tag} "))
-        || html.contains(&format!("<{tag}/"))
-        || html.contains(&format!("<{tag} /"))
-}
-
 /// DOM 解析提取元素名集合——字符串匹配会把属性值里的字面 `<em>` 误判
 /// 成元素（Raw HTML 例的参考输出就是这么序列化的）。
 fn element_tags(html: &str) -> std::collections::HashSet<&'static str> {

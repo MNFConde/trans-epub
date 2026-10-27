@@ -27,3 +27,9 @@ cargo +nightly fuzz run fuzz_ttf      -- -max_total_time=300
 - 崩溃样本落在 `artifacts/`（gitignore，不入库）；修复后把触发样本提炼成
   回归测试进 `src/ttf.rs` 内嵌或 `tests/behavior/`（回归纪律见
   docs/testing/organization.md）。
+
+## 已跑轮次记录
+
+| 日期 | 环境 | 结果 |
+|---|---|---|
+| 2026-10-28 | WSL Ubuntu-24.04 / nightly 1.101.0 / cargo-fuzz 0.13.2 / ASAN，各 300s | `fuzz_web_html` 130.4 万次执行零崩溃；`fuzz_ttf` 首轮 2.3 万次即抓到 ttcf 畸形集合头致 ttf-parser 0.25.1 内部断言 panic（30 字节样本已提炼为回归测试 `malformed_ttcf_collection_rejected_not_panic`，修复 = `directory_sane` 目录预检）；修复后复跑 2560.8 万次零崩溃收口 |
