@@ -6,6 +6,7 @@
 //! 判断 CLI 是否越界的标准：删掉本 crate 换成 HTTP handler，逻辑能否
 //! 整体搬进服务？能，就是薄壳。
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -345,7 +346,7 @@ fn finish_convert(
                     return Ok(EXIT_FATAL);
                 }
             }
-            if let Err(e) = std::fs::write(out_path, &output.bytes) {
+            if let Err(e) = write_epub_atomic(out_path, &output.bytes) {
                 eprintln!("trans-epub: write {}: {e}", out_path.display());
                 return Ok(EXIT_FATAL);
             }
@@ -377,6 +378,50 @@ fn finish_convert(
             Ok(EXIT_OK)
         }
     }
+}
+
+/// 原子落盘（60-cli.md 职责 6）：写旁名 `<输出路径>.tmp` → fsync → rename
+/// 覆盖正式路径。rename 在同一文件系统上原子，进程中途死（断电/被杀/
+/// panic）时正式路径要么保持旧完整版、要么不存在，永无半成品；残留
+/// `.tmp` 由下次运行覆盖。fsync 在 rename 前是真掉电口径：进程死只需
+/// rename 原子性，掉电还要保证 tmp 内容先于目录项落盘。
+///
+/// 故障注入面（崩溃原子性测试用，正常使用无人设置；abort = 无清理机会
+/// 的进程死亡，等效断电的进程视角）：
+/// `TRANS_EPUB_FAULT=tmp_half_write`——tmp 写到一半死；
+/// `TRANS_EPUB_FAULT=tmp_no_rename`——tmp 写完 fsync 后、rename 前死。
+fn write_epub_atomic(out_path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let fault = std::env::var("TRANS_EPUB_FAULT").ok();
+    let tmp_path = tmp_sibling(out_path);
+    let result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&tmp_path)?;
+        if fault.as_deref() == Some("tmp_half_write") {
+            let cut = bytes.len() / 2;
+            file.write_all(&bytes[..cut])?;
+            file.sync_all()?;
+            std::process::abort();
+        }
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        if fault.as_deref() == Some("tmp_no_rename") {
+            std::process::abort();
+        }
+        std::fs::rename(&tmp_path, out_path)
+    })();
+    if result.is_err() {
+        // 失败清场：不留半截 tmp（此时正式路径未被动过）
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    result
+}
+
+/// 正式输出路径的旁名：`book.epub` → `book.epub.tmp`（固定名，下次运行
+/// 直接覆盖，不留 pid 后缀垃圾）。
+fn tmp_sibling(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    path.with_file_name(name)
 }
 
 fn dry_run(converter: &Converter, source: &Source, config: &ResolvedConfig) -> Result<u8, String> {

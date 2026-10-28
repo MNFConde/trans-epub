@@ -15,7 +15,17 @@ pub(crate) struct Out {
 }
 
 pub(crate) fn run(args: &[&str]) -> Out {
-    let output = Command::new(BIN).args(args).output().expect("binary runs");
+    run_with_env(args, &[])
+}
+
+/// 带环境变量跑（故障注入钩子 TRANS_EPUB_FAULT 等）。
+pub(crate) fn run_with_env(args: &[&str], env: &[(&str, &str)]) -> Out {
+    let mut cmd = Command::new(BIN);
+    cmd.args(args);
+    for (key, value) in env {
+        cmd.env(key, value);
+    }
+    let output = cmd.output().expect("binary runs");
     Out {
         code: output.status.code().unwrap_or(-1),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
