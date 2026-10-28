@@ -5,7 +5,7 @@ summary: "测试落点与组织操作细则：单元/集成分布判据、镜像
 tags: [trans-epub, testing, organization]
 contains: [checklist]
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-10-29
 related: ["../adr/0011-test-organization.md", "manual-checklist.md"]
 authoring_mode: ai_generated
 ---
@@ -55,6 +55,6 @@ authoring_mode: ai_generated
 
 ## 故障注入与已知不可测项
 
-故障注入走 mock 出口：MockFetcher 决定 URL 应答形态（失败 / 篡改 / 超限）、输出路径占位（目录）注入落盘失败。已知不可测项须登记原因而非硬造：
+故障注入走四类出口：**MockFetcher** 决定 URL 应答形态（失败 / 篡改 / 超限）、**MockServer 的 FaultKind** 注入传输层故障（半截响应头断连 / 声明长度截断）、**输出路径占位**（目录）注入落盘失败、**产品二进制内置注入面**（`TRANS_EPUB_FAULT`，cli `write_epub_atomic` 的 tmp 半截 / rename 前 abort——abort 无清理机会，等效断电的进程视角）。后者为何进产品代码而非测试代码：被测对象是真二进制（spawn 后 kill / 断言磁盘状态），`#[cfg(test)]` 钩子在二进制里不存在；环境变量正常使用无人设置，SQLite crash VFS 同思路的极简版。已知不可测项须登记原因而非硬造：
 
 - **字体缓存写失败降级**（`pipeline/fonts.rs` 的 `let _ =` 静默忽略）：写入只发生在 sha256 校验通过后，构造"校验通过且写失败"需要钉版 zip 的 sha 原像——不可行；注入需重构缓存层为 trait，收益不配。代码评审确认静默降级形态即可。
