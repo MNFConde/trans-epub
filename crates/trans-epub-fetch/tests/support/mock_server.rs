@@ -16,6 +16,17 @@ pub struct Route {
     /// 前 N 次命中改回 500（重试语义测试）。
     fail_first: usize,
     hits: Arc<AtomicUsize>,
+    /// 传输层故障注入（连接中断 / 截断响应）。
+    fault: Option<FaultKind>,
+}
+
+/// 传输层故障形态（polite 重试语义的注入面）。
+#[derive(Clone, Copy, Debug)]
+pub enum FaultKind {
+    /// 只写响应头的一部分字节就断连（连接中途 reset）。
+    ResetMidResponse,
+    /// 声明 1MB Content-Length 但只发 64 字节 body 即关闭（响应截断）。
+    TruncatedBody,
 }
 
 #[derive(Clone, Default)]
@@ -67,6 +78,7 @@ impl MockServer {
                 body: body.into(),
                 fail_first: 0,
                 hits: Arc::new(AtomicUsize::new(0)),
+                fault: None,
             },
         );
         self
@@ -79,7 +91,27 @@ impl MockServer {
             content_type: "text/html".to_string(),
             body: body.as_bytes().to_vec(),
             fail_first: n,
-            hits: Arc::new(AtomicUsize::new(0)),
+            hits: std::sync::Arc::new(AtomicUsize::new(0)),
+            fault: None,
+        };
+        self.inner
+            .routes
+            .lock()
+            .unwrap()
+            .insert(path.to_string(), route);
+        self
+    }
+
+    /// 传输层故障注入：连接建立后只写部分响应字节即断连（模拟中途
+    /// reset）；或声明大 Content-Length 只发半截 body（模拟截断）。
+    pub fn route_fault(&self, path: &str, fault: FaultKind) -> &Self {
+        let route = Route {
+            status: 200,
+            content_type: "text/html".to_string(),
+            body: Vec::new(),
+            fail_first: 0,
+            hits: std::sync::Arc::new(AtomicUsize::new(0)),
+            fault: Some(fault),
         };
         self.inner
             .routes
@@ -126,9 +158,34 @@ impl MockServer {
             write_response(&mut stream, status, &ct, &body);
             return;
         }
+        if let Some(fault) = route.fault {
+            drop(routes);
+            inject_fault(&mut stream, fault);
+            return;
+        }
         let (status, ct, body) = (route.status, route.content_type.clone(), route.body.clone());
         drop(routes);
         write_response(&mut stream, status, &ct, &body);
+    }
+}
+
+/// 传输层故障：直接操纵原始字节流，不走 write_response 的规范路径。
+fn inject_fault(stream: &mut TcpStream, fault: FaultKind) {
+    match fault {
+        FaultKind::ResetMidResponse => {
+            // 只写半个状态行就断连（半截响应头）
+            let _ = stream.write_all(b"HTTP/1.1 200 O");
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+        FaultKind::TruncatedBody => {
+            // 声明 1MB 但只发 64 字节即关闭——连接级截断（非干净 EOF
+            // 语义由 OS 栈呈现，reqwest 侧表现为 body 读错误或提前 EOF）
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\
+                        Content-Length: 1048576\r\nConnection: close\r\n\r\n";
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(&[b'x'; 64]);
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
     }
 }
 

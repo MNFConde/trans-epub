@@ -22,7 +22,8 @@ cargo +nightly fuzz run fuzz_web_html -- -max_total_time=300
 cargo +nightly fuzz run fuzz_ttf      -- -max_total_time=300
 ```
 
-- 种子语料在 `corpus/<目标>/`（入库，小而精：有效样本 + 截断/片段变体）；
+- 种子语料在 `corpus/<目标>/`（入库，小而精 ~60KB/40 条：手工种子 +
+  2026-10-28 正式一轮后从 4722 条实测语料三层抽样回灌的 fuzzed-* 样本）；
   libFuzzer 发现的新覆盖自动追加进 corpus 目录——提交前人工筛一遍再入库。
 - 崩溃样本落在 `artifacts/`（gitignore，不入库）；修复后把触发样本提炼成
   回归测试进 `src/ttf.rs` 内嵌或 `tests/behavior/`（回归纪律见

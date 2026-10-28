@@ -229,3 +229,45 @@ fn fetch_direct_skips_robots_while_fetch_stays_bound() {
         Err(FetchError::Denied(_))
     ));
 }
+
+// ---------------------------------------------------------------------------
+// 传输层故障注入（todo 2026-10-28 发布前测试收尾）：连接中途 reset 与
+// 响应截断走"网络错误"路径——与 5xx 同属可重试类
+// ---------------------------------------------------------------------------
+
+use crate::support::mock_server::FaultKind;
+
+#[test]
+fn connection_reset_mid_response_is_retried_then_fails() {
+    // 永久故障路由：每次都在半截响应头处断连 → 重试耗尽后报网络错误
+    let server = MockServer::new();
+    server.route_fault("/flaky", FaultKind::ResetMidResponse);
+    let base = server.serve();
+
+    let fetcher = PoliteFetcher::new(fast_config());
+    let result = fetcher.fetch(&base.join("/flaky").unwrap());
+    assert!(
+        matches!(result, Err(FetchError::Network(_))),
+        "reset 属网络错误（重试耗尽）：{result:?}"
+    );
+    // 总尝试 = retries(2) + 1 = 3 次（含 robots 拉取不受此路由影响）
+    assert_eq!(server.hits("/flaky"), 3, "中途 reset 必须重试到底");
+}
+
+#[test]
+fn truncated_body_is_not_silently_accepted() {
+    // 声明 1MB 只发 64 字节：截断响应不得被当作完整 body 静默接受
+    let server = MockServer::new();
+    server.route_fault("/cut", FaultKind::TruncatedBody);
+    let base = server.serve();
+
+    let fetcher = PoliteFetcher::new(fast_config());
+    let result = fetcher.fetch(&base.join("/cut").unwrap());
+    match result {
+        // reqwest 对 Content-Length 不匹配的表现可能是网络错误或短 body——
+        // 两种形态都不允许"成功返回 64 字节且无异常"的静默截断
+        Err(FetchError::Network(_)) => {}
+        Ok(page) => panic!("截断响应不得成功返回 {} 字节", page.body.len()),
+        other => panic!("意外结果：{other:?}"),
+    }
+}

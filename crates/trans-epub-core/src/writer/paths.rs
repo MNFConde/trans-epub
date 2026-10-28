@@ -364,4 +364,67 @@ mod tests {
         assets.extend([asset("gone.png", AssetData::Missing)]);
         assert!(assign_assets(&assets).is_empty());
     }
+
+    #[test]
+    fn sniffs_all_magic_numbers() {
+        // 无扩展名 → 走 sniff 魔数链（分支覆盖定位的洼地：此前只有 PNG 被走）
+        let key = SourceKey::Path(RelPath::new("blob").unwrap());
+        let sniffed = |bytes: &[u8]| detect_media_type(&key, bytes).map(|m| m.mime);
+        assert_eq!(
+            sniffed(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A]),
+            Some("image/png")
+        );
+        assert_eq!(sniffed(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
+        assert_eq!(sniffed(b"GIF87a-rest"), Some("image/gif"));
+        assert_eq!(sniffed(b"GIF89a-rest"), Some("image/gif"));
+        assert_eq!(sniffed(b"BM\x36\x00\x00\x00"), Some("image/bmp"));
+        // RIFF+WEBP：需要 >= 12 字节且 [8..12] == "WEBP"
+        assert_eq!(sniffed(b"RIFF\x00\x00\x00\x00WEBP"), Some("image/webp"));
+        assert_eq!(
+            sniffed(b"RIFF\x00\x00\x00"),
+            None,
+            "不足 12 字节不嗅探 WEBP"
+        );
+        // SVG：头部 <svg 或含 <?xml…<svg
+        assert_eq!(sniffed(b"<svg xmlns='x'>"), Some("image/svg+xml"));
+        assert_eq!(sniffed(b"  <SVG "), Some("image/svg+xml"), "大小写不敏感");
+        assert_eq!(
+            sniffed(b"<?xml version='1.0'?><svg xmlns='x'/>"),
+            Some("image/svg+xml")
+        );
+        assert_eq!(sniffed(b"<div>not svg</div>"), None);
+        assert_eq!(sniffed(b""), None);
+    }
+
+    #[test]
+    fn declared_extension_wins_over_sniff() {
+        // 扩展名优先于魔数（口径见 detect_media_type 注释）；未知扩展名回落嗅探
+        let jpeg_bytes: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0];
+        let png_named = SourceKey::Path(RelPath::new("fake.png").unwrap());
+        assert_eq!(
+            detect_media_type(&png_named, jpeg_bytes).map(|m| m.mime),
+            Some("image/png"),
+            ".png 扩展名优先，字节是 JPEG 也不改判"
+        );
+        let unknown_named = SourceKey::Path(RelPath::new("asset.binx").unwrap());
+        assert_eq!(
+            detect_media_type(&unknown_named, jpeg_bytes).map(|m| m.mime),
+            Some("image/jpeg"),
+            "未知扩展名回落魔数嗅探"
+        );
+        // URL 源：http 路径取末段扩展名；data: URI 的 mime 段无点号扩展名
+        //（"image/png" 取不出白名单扩展），回落魔数嗅探——现状口径
+        let http_url = SourceKey::Url("https://a.dev/img/logo.png".parse().unwrap());
+        assert_eq!(
+            detect_media_type(&http_url, jpeg_bytes).map(|m| m.mime),
+            Some("image/png"),
+            "URL 末段扩展名优先"
+        );
+        let data_url = SourceKey::Url("data:image/jpeg;base64,aGVsbG8=".parse().unwrap());
+        assert_eq!(
+            detect_media_type(&data_url, jpeg_bytes).map(|m| m.mime),
+            Some("image/jpeg"),
+            "data: URI 无点号扩展名 → sniff 兜底"
+        );
+    }
 }
