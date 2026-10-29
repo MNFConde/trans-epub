@@ -98,7 +98,9 @@ jobs:
           cp README.md LICENSE "$PKG/"
           cp crates/trans-epub-core/assets/fonts/NOTICE.md "$PKG/FONT-NOTICE.md"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            powershell -NoProfile -Command "Compress-Archive -Path '$PKG' -DestinationPath 'dist/$NAME.zip'"
+            # Compress-Archive 写反斜杠路径分隔符（非标 zip，Linux unzip 报警退 1）；
+            # 改用系统自带 bsdtar 按扩展名写标准 zip（正斜杠分隔）
+            /c/Windows/System32/tar.exe -a -cf "dist/$NAME.zip" -C "$RUNNER_TEMP" "$NAME"
           else
             tar -czf "dist/$NAME.tar.gz" -C "$RUNNER_TEMP" "$NAME"
           fi
@@ -157,7 +159,8 @@ jobs:
           for a in dist/trans-epub-*; do
             echo "==> $a"
             case "$a" in
-              *.zip) unzip -q "$a" -d unpacked ;;
+              # unzip 退码 1 = 有 warning 但解包成功（容忍）；≥2 才是真失败
+              *.zip) rc=0; unzip -q "$a" -d unpacked || rc=$?; [ "$rc" -le 1 ] || exit 1 ;;
               *.tar.gz) tar -xzf "$a" -C unpacked ;;
               *) echo "未知资产类型: $a"; exit 1 ;;
             esac
