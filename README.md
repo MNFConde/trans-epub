@@ -7,7 +7,7 @@ markdown / mdBook / 静态文档站 → EPUB3 转换器。差异化是**编程�
 三种方式任选：
 
 - **预编译二进制**（推荐）：从 [Releases](./releases) 下载对应平台压缩包，解压即用。平台矩阵：Windows / Linux / macOS × x64 / arm64。
-- **cargo 从源码安装**：`cargo install --git <repo-url>`（首发后补全仓库地址）。
+- **cargo 从源码安装**：`cargo install --git https://github.com/MNFConde/trans-epub trans-epub-cli`。
 - **从仓库构建**：`git clone` 后 `cargo build --release`，产物在 `target/release/trans-epub`。需要 Rust 1.85+。
 
 ## 快速上手

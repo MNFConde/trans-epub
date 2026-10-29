@@ -1,0 +1,70 @@
+# CI 门禁：与本地质量门禁同口径（AGENTS.md 质量约束）
+#   fmt → clippy -D warnings → test（含 golden 字节回归）→ mutool 渲染冒烟 → 文档三脚本
+# 外加 MSRV 门：rust-version = 1.85 已在 workspace 声明，此处用真 1.85.0 工具链验证
+# （todo.todo 测试补充战役环境矩阵第 1 块——"已声明无验证"的收口）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gates:
+    name: 门禁（fmt / clippy / test / mutool / docs）
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --check --all
+
+      - name: cargo clippy -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test（含 golden 字节回归）
+        run: cargo test --workspace
+
+      # mutool-smoke.sh 在 mutool 缺席时 SKIP 退 0（本地不挡门禁）；
+      # CI 先装 mupdf-tools 再调用，冒烟门全量生效（todo「CI 挂载随 Releases 流水线一并」）。
+      - name: mutool 渲染冒烟（golden 5 本，逐页非空白断言）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mupdf-tools
+          bash scripts/mutool-smoke.sh
+
+      # 文档门禁三脚本（AGENTS.md 文档门禁）；cairn/ 不入库，check-links 默认参数
+      # 在其缺失时自动只查 docs/（scripts/check-links.py roots 过滤已实证）。
+      - name: 文档门禁（links / frontmatter / markers）
+        run: |
+          python3 scripts/check-links.py
+          python3 scripts/check-frontmatter.py
+          python3 scripts/check-markers.py
+
+  msrv:
+    name: MSRV 1.85 门
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # toolchain 输入显式钉 1.85.0（dtolnay action 会导出 RUSTUP_TOOLCHAIN，
+      # 压过 rust-toolchain.toml 的 channel=stable，MSRV 门不被默认工具链架空）
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv-1.85
+
+      - name: cargo check --workspace --all-targets（1.85.0 工具链）
+        run: cargo check --workspace --all-targets

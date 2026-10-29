@@ -23,23 +23,21 @@ authoring_mode: ai_generated
 | Linux | x64、arm64（静态链接，无 glibc 版本要求） |
 | macOS | x64、arm64 |
 
-> Releases 首发前（见 [todo](../../todo.todo)），请先用下面两种方式。
-
 ## cargo 从源码安装
 
 ```bash
-cargo install --git <repo-url> trans-epub-cli
+cargo install --git https://github.com/MNFConde/trans-epub trans-epub-cli
 ```
 
-（仓库地址首发后补全。）本地需要 Rust 工具链。
+本地需要 Rust 工具链。
 
 ## 从仓库构建
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/MNFConde/trans-epub
 cd trans-epub
 cargo build --release
 # 产物：target/release/trans-epub
 ```
 
-需要 Rust 1.85+（版本由仓库根 `rust-toolchain.toml` 钉定，rustup 会自动安装对应工具链）。
+需要 Rust 1.85+（MSRV 由仓库根 `Cargo.toml` 的 `rust-version` 声明，cargo 会拒绝过旧工具链）。

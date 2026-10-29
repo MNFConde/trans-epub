@@ -1,0 +1,188 @@
+# GitHub Releases 首发流水线（ADR 0013：分发改 GitHub Releases 预编译二进制，六目标矩阵）
+#
+# 结构：tag v* 推送触发
+#   build            六目标矩阵构建；本机可执行的目标当场冒烟（转 fixtures/single 比对 golden 字节）
+#   release          汇总资产创建 Release（自动生成变更说明）
+#   bootstrap-smoke  自举烟测：从刚创建的 Release 下载全部资产——解包完整性校验 + linux 双目标
+#                    真机执行转换并与 golden 字节比对（发布资产损坏是高频事故，todo 测试战役环境矩阵第 2 块）
+#
+# 交叉构建口径（ADR 0013 实证：Cargo.lock 已无 native-tls / openssl-sys / aws-lc-*，
+# TLS = rustls + ring，无重型 C 工具链依赖；ring 的 C 部分由 musl-tools / MSVC ARM64 组件满足）：
+#   linux ×2   ubuntu 原生架构 runner（x64 / arm64 各自原生）+ musl-tools → 静态链接，无 glibc 版本要求
+#   macos ×2   macos-15（arm64）runner：arm64 原生、x64 交叉（同族可交叉）
+#   win ×2     windows-2025：x64 原生、arm64 用 VS ARM64 组件交叉
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            run_smoke: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            run_smoke: true
+          - target: x86_64-apple-darwin
+            os: macos-15
+            run_smoke: true # Rosetta 可执行 x64 产物
+          - target: aarch64-apple-darwin
+            os: macos-15
+            run_smoke: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+            run_smoke: true
+          - target: aarch64-pc-windows-msvc
+            os: windows-2025
+            run_smoke: false # x64 host 无法执行 arm64 二进制，可执行性由 bootstrap-smoke 的结构校验兜底
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: 安装 musl 静态工具链（ring 的 C 部分需要目标 C 编译器）
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: 构建
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 构建产物冒烟（转 fixtures/single，与 golden 字节比对）
+        if: matrix.run_smoke
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/trans-epub"
+          [ "${{ runner.os }}" = "Windows" ] && BIN="$BIN.exe"
+          "$BIN" crates/trans-epub-core/tests/fixtures/single -o "$RUNNER_TEMP/smoke.epub" -q
+          cmp "$RUNNER_TEMP/smoke.epub" crates/trans-epub-core/tests/golden/single.epub
+          echo "==> ${{ matrix.target }} 冒烟 OK（与 golden 字节一致）"
+
+      # strip 是体积优化不是正确性；跨目标 strip 失败不阻塞发布
+      - name: strip（非 Windows）
+        if: runner.os != 'Windows'
+        shell: bash
+        run: strip "target/${{ matrix.target }}/release/trans-epub" || true
+
+      - name: 打包
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="trans-epub-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          PKG="$RUNNER_TEMP/$NAME"
+          mkdir -p "$PKG" dist
+          BIN="target/${{ matrix.target }}/release/trans-epub"
+          [ "${{ runner.os }}" = "Windows" ] && BIN="$BIN.exe"
+          cp "$BIN" "$PKG/"
+          cp README.md LICENSE "$PKG/"
+          cp crates/trans-epub-core/assets/fonts/NOTICE.md "$PKG/FONT-NOTICE.md"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -NoProfile -Command "Compress-Archive -Path '$PKG' -DestinationPath 'dist/$NAME.zip'"
+          else
+            tar -czf "dist/$NAME.tar.gz" -C "$RUNNER_TEMP" "$NAME"
+          fi
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: 创建 Release 并上传资产
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: 资产清单（应为 6 件）
+        run: |
+          ls -la dist/
+          [ "$(ls dist | wc -l)" -eq 6 ] || { echo "资产数量不为 6"; exit 1; }
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            预编译二进制，六平台矩阵（Windows / Linux / macOS × x64 / arm64）。解压即得单个可执行文件 `trans-epub`，无运行时依赖；Linux 为静态链接（无 glibc 版本要求）。
+
+            安装说明与平台矩阵见 [docs/guide/install.md](../blob/main/docs/guide/install.md)；许可证 AGPL-3.0-only，内嵌字体的 OFL 义务见压缩包内 FONT-NOTICE.md。
+
+  # 自举烟测：站在用户视角，从刚创建的 Release 下载资产验收（todo「CI 下载自己刚上传的资产
+  # 跑一遍 golden 转换」）。linux 双目标真机执行转换；win/mac 四目标在本 job 只做解包完整性
+  # 校验（其可执行性由 build 各自 runner 上的冒烟步覆盖）。
+  bootstrap-smoke:
+    name: 资产自举烟测（下载 → 解包 → 转换 → golden 比对）
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载全部发布资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir dist --clobber
+
+      - name: 六资产解包完整性 + 二进制在场校验
+        run: |
+          set -euo pipefail
+          mkdir -p unpacked
+          for a in dist/trans-epub-*; do
+            echo "==> $a"
+            case "$a" in
+              *.zip) unzip -q "$a" -d unpacked ;;
+              *.tar.gz) tar -xzf "$a" -C unpacked ;;
+              *) echo "未知资产类型: $a"; exit 1 ;;
+            esac
+          done
+          found=$(find unpacked -name 'trans-epub*' -type f | sort)
+          echo "$found"
+          [ "$(echo "$found" | wc -l)" -eq 6 ] || { echo "期望 6 个二进制，实得: $(echo "$found" | wc -l)"; exit 1; }
+          small=$(find unpacked -name 'trans-epub*' -type f -size -1M)
+          [ -z "$small" ] || { echo "存在 <1MB 的可疑二进制: $small"; exit 1; }
+
+      - name: linux x64 musl 资产真转换（golden 字节比对）
+        run: |
+          BIN=$(find unpacked -path '*x86_64-unknown-linux-musl*' -name trans-epub -type f)
+          "$BIN" crates/trans-epub-core/tests/fixtures/single -o /tmp/x64.epub -q
+          cmp /tmp/x64.epub crates/trans-epub-core/tests/golden/single.epub
+          echo "==> linux x64 资产转换 OK（与 golden 字节一致）"
+
+      - name: linux arm64 musl 资产真转换（qemu-user，golden 字节比对）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          BIN=$(find unpacked -path '*aarch64-unknown-linux-musl*' -name trans-epub -type f)
+          qemu-aarch64-static "$BIN" crates/trans-epub-core/tests/fixtures/single -o /tmp/arm64.epub -q
+          cmp /tmp/arm64.epub crates/trans-epub-core/tests/golden/single.epub
+          echo "==> linux arm64 资产转换 OK（与 golden 字节一致）"
+
+      - name: win / mac 四资产口径说明
+        run: echo "windows×2 / macos×2 已通过解包完整性 + 二进制在场校验；可执行转换由 build 阶段各平台 runner 上的冒烟步覆盖"
