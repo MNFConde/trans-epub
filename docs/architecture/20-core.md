@@ -1,11 +1,11 @@
 ---
 type: architecture
 status: active
-summary: "trans-epub-core 转换内核设计：Converter 门面 API 与装配扩展点、pipeline pass 链（顺序契约表）、DOM 一次解析策略、协作式取消、确定性输出（uid 派生/zip 时间戳归一）、开闭原则落地检查表、测试策略（fixtures/golden/mock）"
+summary: "trans-epub-core 转换内核设计：Converter 门面 API 与装配扩展点、pipeline pass 链（顺序契约表）、DOM 一次解析策略、协作式取消、确定性输出（uid 派生/zip 时间戳与 system 字节归一）、开闭原则落地检查表、测试策略（fixtures/golden/mock）"
 tags: [trans-epub, architecture, core, pipeline, pass, dom, determinism]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-26
+updated: 2026-10-29
 related: ["../requirements.md", "10-contracts.md"]
 authoring_mode: ai_generated
 ---
@@ -161,7 +161,8 @@ EPUB 内部路径规则（章节文件名 `Text/ch00001.xhtml`、资产按类型
 - 章节文件名按 spine 序派生（`ch00001.xhtml`…，1 起），不掺内容哈希或时间。
 - EPUB unique-identifier 由书名 + 源集（排序后的 SourceKey、章节内容、资产内容哈希）SHA-256 派生，同输入同 uid。
 - zip 全部条目时间戳归一为 1980-01-01 00:00:00；`dcterms:modified` 用固定常量（core 不读时钟）。epub-builder 不暴露时间戳控制，故**直接用 zip crate 写包**（50-writer.md 的「patch 或换 zip 层」取后者，已落地验证）。
-- 价值：golden 样书可做**字节级比对**（已实现：同输入连转两次、以及与提交的 golden `.epub` 比对）；服务化后同任务结果可缓存、可去重。
+- zip central directory 的 version-made-by host system 字节归一为 Unix(3)（2026-10-29 增）：zip crate 按编译目标写 Dos(Windows)/Unix(其余)（其 `write.rs` 的 `SYSTEM_BYTE`，公开 API 不可配），写完后按 EOCD → central directory 逐条目改写。跨平台字节一致的必要条件——不归一则 Windows 产物与其余平台产物必不相同，golden 回归与发布冒烟只能在单一平台成立。嵌入文本（CSS 模板等 `include_str!` 资产）的 LF 行尾由仓库 `.gitattributes` 保证（检出行尾不随平台漂移）。
+- 价值：golden 样书可做**字节级比对**（已实现：同输入连转两次、以及与提交的 golden `.epub` 比对；2026-10-29 起**跨平台**成立，GitHub Actions 三平台冒烟实证）；服务化后同任务结果可缓存、可去重。
 
 ## 测试策略
 

@@ -1,11 +1,11 @@
 ---
 type: architecture
 status: active
-summary: "trans-epub EPUB3 写出器设计：BookDraft→字节、产出物结构（spine/nav/元数据/封面）、CSS 主题体系（亮色基线+prefers-color-scheme 暗色+用户叠加+代码与 admonition 样式）、长行策略（pre-wrap 默认/硬折行归 pass）、确定性（文件名/uid/zip 时间戳归一）、epubcheck 验收"
+summary: "trans-epub EPUB3 写出器设计：BookDraft→字节、产出物结构（spine/nav/元数据/封面）、CSS 主题体系（亮色基线+prefers-color-scheme 暗色+用户叠加+代码与 admonition 样式）、长行策略（pre-wrap 默认/硬折行归 pass）、确定性（文件名/uid/zip 时间戳与 system 字节归一）、epubcheck 验收"
 tags: [trans-epub, architecture, writer, epub3, css, theme]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-26
+updated: 2026-10-29
 related: ["../requirements.md", "10-contracts.md", "20-core.md"]
 authoring_mode: ai_generated
 ---
@@ -18,14 +18,14 @@ authoring_mode: ai_generated
 
 - 输入 BookDraft 已经过完整 pass 链：链接已改写、资产已就绪（Owned/Missing）、高亮已染色、折行已完成——writer **只做组装，不改内容**。
 - 返回字节而非路径（契约决定）：core 不碰文件系统。
-- 基座：[【当前】 zip crate 直写](#当前基座zip-crate-直写)（[【已否决】 epub-builder](#epub-builder-被否决)——不暴露条目时间戳控制，无法满足确定性；本文原「patch 或换 zip 层」取后者，已落地验证——mimetype 首条目 STORED、其余 Deflated、时间戳全部归一）。
+- 基座：[【当前】 zip crate 直写](#当前基座zip-crate-直写)（[【已否决】 epub-builder](#epub-builder-被否决)——不暴露条目时间戳控制，无法满足确定性；本文原「patch 或换 zip 层」取后者，已落地验证——mimetype 首条目 STORED、其余 Deflated、时间戳全部归一、central directory system 字节归一）。
 - **不做 Kindle 牺牲性适配**（需求定稿决策）：以现代 EPUB3 阅读器为基准（Apple Books / KOReader / 手机 app）。
 
 ### 当前基座：zip crate 直写
 
 > [!IMPORTANT] 【当前】 zip crate 直写
 >
-> mimetype 首条目 STORED、其余 Deflated、条目时间戳全部归一——确定性输出在 writer 层闭环，已落地验证。
+> mimetype 首条目 STORED、其余 Deflated、条目时间戳全部归一、central directory 的 version-made-by system 字节归一为 Unix(3)——确定性输出在 writer 层闭环，已落地验证（system 字节归一为 2026-10-29 跨平台 CI 实证后补：zip crate 按编译目标写 Dos/Unix 且公开 API 不可配，见 20-core.md 确定性输出节）。
 
 ### epub-builder 被否决
 

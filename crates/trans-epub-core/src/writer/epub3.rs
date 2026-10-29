@@ -2,8 +2,10 @@
 //! 字节出。只做组装，不改内容。
 //!
 //! 确定性（20-core.md）：章节文件名按 spine 序；uid 由书名 + 源集与内容
-//! 哈希派生；zip 全部条目时间戳归一；`dcterms:modified` 用固定常量——
-//! 同输入字节级相同，golden 直接 diff。
+//! 哈希派生；zip 全部条目时间戳归一；central directory 的 host system 字节
+//! 归一为 Unix(3)（zip crate 按编译目标写 Dos/Unix，公开 API 不可配）；
+//! `dcterms:modified` 用固定常量——同输入字节级相同（跨平台亦然），golden
+//! 直接 diff。
 //!
 //! 基座：直接用 zip crate（epub-builder 不暴露时间戳控制，无法满足
 //! 确定性；50-writer.md 的「patch 或换 zip 层」取后者）。
@@ -33,6 +35,65 @@ const FIXED_MODIFIED: &str = "2000-01-01T00:00:00Z";
 fn fixed_zip_time() -> zip::DateTime {
     zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0)
         .expect("1980-01-01 00:00:00 is a valid DOS timestamp")
+}
+
+/// central directory 的 version-made-by host system 字节归一为 Unix(3)。
+///
+/// zip crate 按编译目标写 Dos(windows)/Unix(其余)（其 `write.rs` 的
+/// `SYSTEM_BYTE`，`cfg!` 编译期决定、公开 API 不可配）——不归一则 Windows
+/// 产物与其余平台必不相同。嵌入文本的 LF 行尾由仓库 `.gitattributes` 保证。
+///
+/// 定位走 EOCD → central directory 起点按条目结构前移，不对数据区做签名
+/// 扫描（压缩流里可能碰巧出现 `PK\x01\x02`，误改会损坏产物）。
+fn normalize_zip_system_byte(buf: &mut [u8]) -> Result<(), BuildError> {
+    const EOCD_SIG: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
+    const CD_SIG: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
+    const UNIX: u8 = 3;
+
+    let fatal = |message: String| BuildError::Fatal {
+        code: "zip",
+        message,
+    };
+    let eocd = buf
+        .windows(4)
+        .rposition(|w| w == EOCD_SIG)
+        .ok_or_else(|| fatal("zip: EOCD not found".into()))?;
+    let tail: [u8; 22] = buf
+        .get(eocd..eocd + 22)
+        .ok_or_else(|| fatal("zip: EOCD 截断".into()))?
+        .try_into()
+        .expect("22 字节 EOCD 固定段");
+    let comment_len = u16::from_le_bytes([tail[20], tail[21]]) as usize;
+    if eocd + 22 + comment_len != buf.len() {
+        return Err(fatal(
+            "zip: EOCD 位置与注释长度不一致（疑似签名误配）".into(),
+        ));
+    }
+    let cd_size = u32::from_le_bytes(buf[eocd + 12..eocd + 16].try_into().unwrap()) as usize;
+    let cd_off = u32::from_le_bytes(buf[eocd + 16..eocd + 20].try_into().unwrap()) as usize;
+    if cd_off == u32::MAX as usize || cd_size == u32::MAX as usize {
+        return Err(fatal(
+            "zip: zip64 central directory 不支持（产物不应达到该规模）".into(),
+        ));
+    }
+
+    let mut p = cd_off;
+    while p < cd_off + cd_size {
+        let head: [u8; 46] = buf
+            .get(p..p + 46)
+            .ok_or_else(|| fatal("zip: central directory 截断".into()))?
+            .try_into()
+            .expect("46 字节 central directory 固定头");
+        if head[..4] != CD_SIG {
+            return Err(fatal(format!("zip: central directory 条目签名不符 @ {p}")));
+        }
+        buf[p + 5] = UNIX;
+        let nlen = u16::from_le_bytes(head[28..30].try_into().unwrap()) as usize;
+        let elen = u16::from_le_bytes(head[30..32].try_into().unwrap()) as usize;
+        let clen = u16::from_le_bytes(head[32..34].try_into().unwrap()) as usize;
+        p += 46 + nlen + elen + clen;
+    }
+    Ok(())
 }
 
 pub struct Epub3Writer;
@@ -132,6 +193,7 @@ impl Writer for Epub3Writer {
                 message: format!("finishing zip: {e}"),
             })?;
         }
+        normalize_zip_system_byte(&mut buf)?;
         Ok(buf)
     }
 }
@@ -576,4 +638,97 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read as _;
+    use zip::ZipArchive;
+
+    /// 构造一个多条目 zip（含 STORED 首条目，模拟 EPUB 形态）。
+    fn sample_zip() -> Vec<u8> {
+        let mut buf = Vec::new();
+        let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+        for (name, stored) in [
+            ("mimetype", true),
+            ("META-INF/container.xml", false),
+            ("OEBPS/text.xhtml", false),
+        ] {
+            let mut options = SimpleFileOptions::default().last_modified_time(fixed_zip_time());
+            if stored {
+                options = options.compression_method(CompressionMethod::Stored);
+            }
+            zip.start_file(name, options).expect("start_file");
+            zip.write_all(format!("content of {name}").as_bytes())
+                .expect("write");
+        }
+        zip.finish().expect("finish");
+        buf
+    }
+
+    /// central directory 逐条目的 (name, host system 字节)。
+    /// 测试数据小，从 EOCD 定位，走与生产一致的解析路径。
+    fn central_entries(buf: &[u8]) -> Vec<(String, u8)> {
+        let eocd = buf
+            .windows(4)
+            .rposition(|w| w == [0x50, 0x4b, 0x05, 0x06])
+            .expect("eocd");
+        let cd_size = u32::from_le_bytes(buf[eocd + 12..eocd + 16].try_into().unwrap()) as usize;
+        let cd_off = u32::from_le_bytes(buf[eocd + 16..eocd + 20].try_into().unwrap()) as usize;
+        let mut out = Vec::new();
+        let mut p = cd_off;
+        while p < cd_off + cd_size {
+            let nlen = u16::from_le_bytes(buf[p + 28..p + 30].try_into().unwrap()) as usize;
+            let elen = u16::from_le_bytes(buf[p + 30..p + 32].try_into().unwrap()) as usize;
+            let clen = u16::from_le_bytes(buf[p + 32..p + 34].try_into().unwrap()) as usize;
+            out.push((
+                String::from_utf8_lossy(&buf[p + 46..p + 46 + nlen]).into_owned(),
+                buf[p + 5],
+            ));
+            p += 46 + nlen + elen + clen;
+        }
+        out
+    }
+
+    #[test]
+    fn zip_system_byte_normalized_to_unix() {
+        let mut buf = sample_zip();
+        let before: Vec<u8> = central_entries(&buf).iter().map(|e| e.1).collect();
+        assert!(
+            before.iter().all(|&b| b == before[0]),
+            "同平台一次写出的 system 字节应一致，实际 {before:?}"
+        );
+
+        normalize_zip_system_byte(&mut buf).expect("normalize");
+
+        let entries = central_entries(&buf);
+        assert_eq!(entries.len(), 3);
+        assert!(
+            entries.iter().all(|(_, sys)| *sys == 3),
+            "归一后应全为 Unix(3)，实际 {entries:?}"
+        );
+
+        // 归一只动 central directory 的 system 字节，zip 仍可读、内容不损
+        let mut archive = ZipArchive::new(std::io::Cursor::new(&buf)).expect("open");
+        let mut s = String::new();
+        archive
+            .by_name("OEBPS/text.xhtml")
+            .expect("entry")
+            .read_to_string(&mut s)
+            .expect("read");
+        assert_eq!(s, "content of OEBPS/text.xhtml");
+        assert_eq!(
+            archive.by_name("mimetype").expect("entry").compression(),
+            zip::CompressionMethod::Stored
+        );
+    }
+
+    #[test]
+    fn zip_system_byte_rejects_truncated_central_directory() {
+        let mut buf = sample_zip();
+        let len = buf.len();
+        buf.truncate(len - 8); // 掐掉 EOCD 尾部，结构破损必须报错而非 panic
+        assert!(normalize_zip_system_byte(&mut buf).is_err());
+    }
 }
