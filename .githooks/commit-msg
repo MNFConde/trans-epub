@@ -18,4 +18,4 @@ if [ -z "$found" ]; then
   echo "commit-msg: 未找到可用的 python3/python/py，跳过格式校验" >&2
   exit 0
 fi
-exec $found script/check-commit-msg.py "$1"
+exec $found scripts/check-commit-msg.py "$1"

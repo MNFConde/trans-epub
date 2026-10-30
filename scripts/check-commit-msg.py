@@ -2,7 +2,7 @@
 """check-commit-msg.py — 校验 git 提交信息是否符合 Conventional Commits 格式。
 
 用法:
-  python3 script/check-commit-msg.py <提交信息文件>
+  python3 scripts/check-commit-msg.py <提交信息文件>
 
 由 .githooks/commit-msg 钩子调用；仅校验本地提交，绝不自动推送。
 不符合时逐条输出原因并返回 exit code 1。
