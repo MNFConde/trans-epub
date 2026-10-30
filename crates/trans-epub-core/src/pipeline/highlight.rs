@@ -33,9 +33,7 @@ impl Pass for Highlight {
 
     fn run(&self, book: &mut BookDom, ctx: &mut PassCtx<'_>) -> Result<(), BuildError> {
         let total = book.chapters.len();
-        let BookDom {
-            chapters, warnings, ..
-        } = book;
+        let BookDom { chapters, .. } = book;
         for (idx, chapter) in chapters.iter_mut().enumerate() {
             ctx.check_cancel()?;
             ctx.progress
@@ -76,7 +74,7 @@ impl Pass for Highlight {
                     }
                     None => {
                         if !ctx.config.highlight.unknown_language_fallback {
-                            warnings.push(Warning::new(
+                            ctx.reporter.report(Warning::new(
                                 WarningCode::HighlightSkipped,
                                 Some(chapter_source.clone()),
                                 format!("unknown code language: {lang}"),

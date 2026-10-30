@@ -54,12 +54,12 @@ impl Pass for Fonts {
             FontSource::Builtin => match cfg.subset {
                 FontSubsetMode::Preset => Some(preset_font(None)),
                 FontSubsetMode::Exact => Some(builtin_exact(book, ctx).unwrap_or_else(|w| {
-                    book.warn(w);
+                    ctx.reporter.report(w);
                     preset_font(Some("exact 下载/子集失败，回落 preset 子集"))
                 })),
             },
             FontSource::User { data, family, .. } => {
-                user_font(book, data.as_deref(), family.clone(), cfg.subset)
+                user_font(book, ctx, data.as_deref(), family.clone(), cfg.subset)
             }
         };
         if let Some(f) = font {
@@ -130,11 +130,7 @@ fn builtin_exact(
         Ok(bytes) => bytes,
         Err(_) => {
             let url: url::Url = PINNED_ZIP_URL.parse().map_err(|_| {
-                Warning::new(
-                    WarningCode::StructureAmbiguous,
-                    None,
-                    "font: invalid pinned url",
-                )
+                Warning::new(WarningCode::FontFallback, None, "font: invalid pinned url")
             })?;
             // 钉版下载是用户点名的单资源 → fetch_direct（契约默认实现
             // = fetch；PoliteFetcher 覆写为跳过 robots——github.com 的
@@ -146,7 +142,7 @@ fn builtin_exact(
                 .fetch_direct(&url, Some(256 * 1024 * 1024))
                 .map_err(|e| {
                     Warning::new(
-                        WarningCode::StructureAmbiguous,
+                        WarningCode::FontFallback,
                         None,
                         format!("font download failed: {e}"),
                     )
@@ -160,14 +156,14 @@ fn builtin_exact(
                 .collect();
             if got != PINNED_ZIP_SHA256 {
                 return Err(Warning::new(
-                    WarningCode::StructureAmbiguous,
+                    WarningCode::FontFallback,
                     None,
                     format!("font zip sha256 mismatch: {got}"),
                 ));
             }
             let ttf = extract_regular(&page.body).ok_or_else(|| {
                 Warning::new(
-                    WarningCode::StructureAmbiguous,
+                    WarningCode::FontFallback,
                     None,
                     "font zip has no Regular ttf",
                 )
@@ -180,7 +176,7 @@ fn builtin_exact(
 
     let chars = book_charset(book);
     let subset = ttf::subset_to_chars(&full, &chars)
-        .ok_or_else(|| Warning::new(WarningCode::StructureAmbiguous, None, "font subset failed"))?;
+        .ok_or_else(|| Warning::new(WarningCode::FontFallback, None, "font subset failed"))?;
     let renamed = ttf::rename_family(
         &subset,
         PRESET_FAMILY,
@@ -188,7 +184,7 @@ fn builtin_exact(
         "TransEpubMono-Regular",
         "Subsetted to the characters of this book by trans-epub; original: Maple Mono CN (OFL-1.1).",
     )
-    .ok_or_else(|| Warning::new(WarningCode::StructureAmbiguous, None, "font rename failed"))?;
+    .ok_or_else(|| Warning::new(WarningCode::FontFallback, None, "font rename failed"))?;
     Ok(EmbeddedFont {
         family: PRESET_FAMILY.to_string(),
         filename: "TransEpubMono-Regular.exact.ttf".to_string(),
@@ -213,17 +209,19 @@ fn extract_regular(zip_bytes: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn user_font(
-    book: &mut BookDom,
+    book: &BookDom,
+    ctx: &mut PassCtx<'_>,
     data: Option<&[u8]>,
     family: Option<String>,
     subset: FontSubsetMode,
 ) -> Option<EmbeddedFont> {
     let Some(data) = data else {
-        book.warn(trans_epub_contract::error::Warning::new(
-            WarningCode::StructureAmbiguous,
-            None,
-            "fonts.source = user 但无 data（path 未被壳层解析），跳过字体内嵌",
-        ));
+        ctx.reporter
+            .report(trans_epub_contract::error::Warning::new(
+                WarningCode::FontFallback,
+                None,
+                "fonts.source = user 但无 data（path 未被壳层解析），跳过字体内嵌",
+            ));
         return None;
     };
     let chars = match subset {
@@ -236,11 +234,12 @@ fn user_font(
     let sub = match ttf::subset_to_chars(data, &chars) {
         Some(s) => s,
         None => {
-            book.warn(trans_epub_contract::error::Warning::new(
-                WarningCode::StructureAmbiguous,
-                None,
-                "用户字体子集化失败，跳过字体内嵌",
-            ));
+            ctx.reporter
+                .report(trans_epub_contract::error::Warning::new(
+                    WarningCode::FontFallback,
+                    None,
+                    "用户字体子集化失败，跳过字体内嵌",
+                ));
             return None;
         }
     };

@@ -17,6 +17,7 @@ pub mod dom;
 pub mod frontends;
 pub mod pipeline;
 pub mod refs;
+pub mod reporter;
 pub mod ttf;
 pub mod writer;
 

@@ -264,6 +264,8 @@ pub enum WarningCode {
     LinkUnresolved, PageExtractFailed, DirectiveUnresolved,
     StructureAmbiguous, EncodingLossy, DuplicateSource,
     HighlightSkipped,   // 代码语言/主题名无法解析（MVP1 补充）
+    FontFallback,       // 字体管线降级（2026-10-30 增：下载/校验/子集/改名失败
+                        // 回落 preset 或跳过内嵌——fuzz 曾在其相邻路径抓 panic）
     // … 只增不改语义
 }
 ```
@@ -272,7 +274,7 @@ pub enum WarningCode {
 - **容忍轨**：warning 进 `BookDraft.warnings`，最终进 BuildReport——机器可读（code + 定位），服务与 `--strict` 模式据此决策。
 - core 的输入处理路径**禁止 panic**；壳层（服务）可另加 `catch_unwind` 保险，但那不是 core 的契约。
 
-### 故障上报：三接收点统一（2026-10-30 增）
+### 故障上报：三接收点统一（2026-10-30 增，同日实施落地）
 
 出口形态（CLI / GUI / 未来服务）可以不同，**接收点唯一**——共三处，全部落在既有契约上，不新建平行故障体系：
 
@@ -281,6 +283,8 @@ pub enum WarningCode {
 3. **致命**：`Result<BuildOutput, BuildError>` 返回值。致命故障**不走** warning 通道：出口必须处理它，不存在漏看；warning 可忽略，所以才配专门通道。
 
 三路数据同源：core 内部收敛到一个 **Reporter**（收集 `BookDraft.warnings` + 同时刻镜像推 `ProgressSink::warning`）单点出口，各组件不直接操作 warnings vec——两路永不分叉。组件失败点随此扩码补齐 `WarningCode`（只增不改语义；已知缺口如 ttf 解析失败的降级路径——fuzz 曾在其相邻路径抓到 panic，此类"能降级的失败"应报 warning 退默认形态而非中止）。
+
+实施口径（2026-10-30 落地）：Reporter 与自由函数形都在 `trans-epub-core::reporter`；pass 侧经 `PassCtx.reporter` 上报（执行器持有中转批次，pass 边界并入权威 vec，顺序与执行序一致）；前端 load 期在**入账合并点**走 Reporter——不在 detect/prepare 内部镜像，因为 convert 先 probe 后 load，同一批 warning 会在两条路径各记一次，镜像埋在记录点会重复推事件（probe 侧同批 warning 走 Outline 呈现，本来就不该镜像）；pass 侧记录点即镜像点（asset-resolve / link-rewrite / highlight / fonts 全部改道）。字体六处失败点从误用的 `structure-ambiguous` 扩码为 `font-fallback`。两路一致性由 behavior 层（Reporter 对账：镜像事件序 == report.warnings）与 CLI e2e（stderr 实时行码多重集 == `--report json` warnings）双向钉死。
 
 **出口适配是壳层的事**（core 不碰 stderr / UI / 网络，同 Writer 只回字节的分界）：CLI 做实时 stderr 行 + 结尾汇总表 + 退出码映射；GUI 把回调投递到 UI 线程再呈现（core 在工作线程跑），`Warning.source`（SourceKey）供点击定位到章/页；服务可选流式（SSE / JSON 行）透传实时事件，report 本就 Serialize 可直接作 API 响应字段、致命轨映射 HTTP 状态码。未来新形态（TUI / WASM 前端等）实现同一个 `ProgressSink`、读同一份 report、处理同一个 `Err`，core 零改动。
 

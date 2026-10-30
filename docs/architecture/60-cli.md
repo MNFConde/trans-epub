@@ -5,7 +5,7 @@ summary: "trans-epub-cli 薄壳（路径族 + crawl 采集族均已落地）：�
 tags: [trans-epub, architecture, cli, clap, config-merge]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-28
+updated: 2026-10-30
 related: ["../requirements.md", "10-contracts.md", "00-overview.md"]
 authoring_mode: ai_generated
 ---
@@ -21,10 +21,10 @@ authoring_mode: ai_generated
 1. **参数解析**（clap derive）→ 覆盖层。
 2. **配置合并**：产出 `ResolvedConfig`。优先级（需求定稿）：**CLI flags > front matter > TOML 配置文件**；结构层面**显式声明 > 自动探测**。注意两层合并的分工：书级配置（标题/作者/主题/资产策略…）由 CLI 合并；章节级 front matter（title/order）由前端在 load 时应用——CLI 只保证把两级配置的优先级语义传对。
 3. **Source 构造**：本地路径 → `FsVfs`（契约 `Vfs` 的第一个实现：目录整树 walkdir 排序遍历；单文件输入时根 = 其父目录、walk 只返回该文件，资产引用照常解析）；`crawl` 子命令 → fetch crate 发现与抓取 → `Source::Pages` → web 前端（MVP3 已落地）。
-4. **Io 接线**：Fetcher 统一用 fetch crate 的 `PoliteFetcher`（MVP1 内置的最小 reqwest 包装已按计划平移进 trans-epub-fetch；crawl 按 `--rate-ms` / `--ignore-robots` / 资产上限配置实例化）；终端 ProgressSink（stage 行 + indicatif 按章进度条，非 tty 自动隐藏；Ctrl-C 置取消位触发协作式取消）。
+4. **Io 接线**：Fetcher 统一用 fetch crate 的 `PoliteFetcher`（MVP1 内置的最小 reqwest 包装已按计划平移进 trans-epub-fetch；crawl 按 `--rate-ms` / `--ignore-robots` / 资产上限配置实例化）；终端 ProgressSink（stage 行 + indicatif 按章进度条，非 tty 自动隐藏；Ctrl-C 置取消位触发协作式取消；warning 实时行见职责 7）。
 5. **dry-run**：跑 probe，树状打印 Outline（标题 + 来源 + 命中的前端 + kind + 探测 warning），不出书。
 6. **执行与落盘**：`Converter::convert` → 写 `.epub` 文件（默认输出 = 当前目录/{输入名}.epub，`-o` 覆盖）。落盘是**原子替换**（tmp+rename）：先写旁名 `<输出路径>.tmp` 并 fsync，再 rename 到正式路径——正式路径上永远只有完整文件（旧版或新版），进程中途死（断电/被杀/panic）不留半成品；残留 `.tmp` 由下次运行覆盖。fsync 是真掉电口径（进程死只需 rename 原子性，掉电还要 fsync 保序——该层不可注入测试，靠此处口径钉死）；原子性与死进程状态由故障注入测试验证（`TRANS_EPUB_FAULT` 环境变量，见 e2e/atomic_write）。
-7. **报告呈现**：warning 汇总人读输出（stderr）；`--report json` 输出机器可读的 BuildReport（stdout，服务/CI 用）；`--strict` 把任何 warning 视为失败。
+7. **报告呈现**：容忍轨 warning 双呈现——构建中逐条实时行（`ProgressSink::warning` 镜像的 stderr 出口，`--quiet` 关闭）+ 结尾汇总表（`BuildReport.warnings` 权威汇总），两路同一格式源（`format_warning`），一致性由 e2e/warning_mirror 钉死；`--report json` 输出机器可读的 BuildReport（stdout，服务/CI 用）；`--strict` 把任何 warning 视为失败。致命轨不走 warning 呈现（走退出码 + 错误行）。
 
 ## 命令面（路径族与采集族均已实现）
 
@@ -36,7 +36,9 @@ authoring_mode: ai_generated
 
 ## 退出码
 
-0 成功（`--strict` 下 warning 也非零）/ 1 转换致命失败（BuildError）或 `--strict` 下的 warning / 2 用法环境错误（参数不合法、路径不存在、无前端可识别）。完整表见 [../guide/cli.md](../guide/cli.md#退出码)（单一事实源）；服务与 CI 以退出码驱动 `--report json` 的消费流程。
+0 成功（含"成功带 warning"；`--strict` 下 warning 也非零）/ 1 转换致命失败（BuildError）或 `--strict` 下的 warning / 2 用法环境错误（参数不合法、路径不存在、无前端可识别）。完整表见 [../guide/cli.md](../guide/cli.md#退出码)（单一事实源）；服务与 CI 以退出码驱动 `--report json` 的消费流程。
+
+（2026-10-30 复核：维持 0/1/2 三码不设"成功带 warning"独立码——`--strict` 已覆盖"warning 即失败"的诉求，"0 但 report 有 warnings"由 `--report json` 的机器可读消费承担；改语义需先动本节与 guide/cli.md，暂无必要。）
 
 ## 服务化对照（三期）
 

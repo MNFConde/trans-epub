@@ -1,11 +1,11 @@
 ---
 type: docs
 status: active
-summary: "命令参考（旗标全表单一事实源）：路径族与 crawl 采集族、采集旗标与通用旗标逐条含默认值、四预设选择器链、--dry-run 两族语义、退出码、TOML 配置文件与合并优先级"
+summary: "命令参考（旗标全表单一事实源）：路径族与 crawl 采集族、采集旗标与通用旗标逐条含默认值、四预设选择器链、--dry-run 两族语义、warning 双通道呈现、退出码、TOML 配置文件与合并优先级"
 tags: [trans-epub, guide, cli, reference]
 contains: [checklist]
 created: 2026-10-25
-updated: 2026-10-26
+updated: 2026-10-30
 related: ["README.md", "../architecture/60-cli.md", "../architecture/40-fetch.md"]
 authoring_mode: ai_generated
 ---
@@ -82,6 +82,15 @@ trans-epub crawl <start> [采集旗标] [通用旗标]  # 采集族：静态文�
 | `--strict` | 关 | 任何 warning 都视为失败（退出码 1） |
 | `--dry-run` | 关 | 只输出清单不出书，两族语义不同（见下） |
 | `-q, --quiet` | 关 | 静默：不输出进度与文本报告 |
+
+## warning 的呈现
+
+转换中产生的 warning（资产拉取失败、断链、结构歧义等，单项失败不中止）有两条呈现通道：
+
+- **实时行**（stderr）：构建中逐条打印 `trans-epub: warning [码] 来源: 消息`，`--quiet` 关闭；
+- **结尾汇总**：构建结束后的报告表（stderr），条数与内容与实时行一致；`--report json` 时 warnings 数组（stdout）是机器可读的权威汇总。
+
+致命错误（取消、源不可读、写出失败）不走 warning 通道——直接非零退出码 + 错误行。
 
 ## --dry-run 的两族语义
 

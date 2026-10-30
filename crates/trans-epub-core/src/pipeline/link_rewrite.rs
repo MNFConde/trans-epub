@@ -51,9 +51,7 @@ impl Pass for LinkRewrite {
             .collect();
         let total = book.chapters.len();
 
-        let BookDom {
-            chapters, warnings, ..
-        } = book;
+        let BookDom { chapters, .. } = book;
         for (idx, chapter) in chapters.iter_mut().enumerate() {
             ctx.check_cancel()?;
             ctx.progress
@@ -72,7 +70,7 @@ impl Pass for LinkRewrite {
                 if target.is_empty() {
                     if let Some(f) = frag {
                         if resolve_anchor(f, own_anchors).is_none() {
-                            warnings.push(Warning::new(
+                            ctx.reporter.report(Warning::new(
                                 WarningCode::LinkUnresolved,
                                 Some(chapter_source.clone()),
                                 format!("anchor not found in this chapter: #{f}"),
@@ -95,7 +93,7 @@ impl Pass for LinkRewrite {
                                 frag.map(|f| match resolve_anchor(f, &anchors[cid.0 as usize]) {
                                     Some(resolved) => format!("#{resolved}"),
                                     None => {
-                                        warnings.push(Warning::new(
+                                        ctx.reporter.report(Warning::new(
                                             WarningCode::LinkUnresolved,
                                             Some(chapter_source.clone()),
                                             format!("anchor not found in {key}: #{f}"),
@@ -123,7 +121,7 @@ impl Pass for LinkRewrite {
                                     let SourceKey::Url(target_url) = &key else {
                                         unreachable!("Url 世界解析只产出 Url 键")
                                     };
-                                    warnings.push(Warning::new(
+                                    ctx.reporter.report(Warning::new(
                                         WarningCode::LinkUnresolved,
                                         Some(chapter_source.clone()),
                                         format!(
@@ -134,7 +132,7 @@ impl Pass for LinkRewrite {
                                     ctx.stats.links_unresolved += 1;
                                 }
                                 SourceKey::Path(_) => {
-                                    warnings.push(Warning::new(
+                                    ctx.reporter.report(Warning::new(
                                         WarningCode::LinkUnresolved,
                                         Some(chapter_source.clone()),
                                         format!("unresolved internal link: {href}"),
@@ -164,7 +162,7 @@ impl Pass for LinkRewrite {
                     ctx.stats.links_rewritten += 1;
                 } else {
                     let label = alt.unwrap_or_else(|| src.clone());
-                    warnings.push(Warning::new(
+                    ctx.reporter.report(Warning::new(
                         WarningCode::LinkUnresolved,
                         Some(chapter_source.clone()),
                         format!("image not embedded: {src}"),

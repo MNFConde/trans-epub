@@ -21,10 +21,12 @@ use trans_epub_contract::config::{MarkdownCfg, ResolvedConfig, StructureCfg};
 use trans_epub_contract::error::{BuildError, Warning, WarningCode};
 use trans_epub_contract::frontend::{Frontend, LoadEnv, Outline, OutlineItem, Probe};
 use trans_epub_contract::ir::{Asset, AssetData, BookDraft, ChapterId, SourceKey, TocItem};
+use trans_epub_contract::progress::ProgressSink;
 use trans_epub_contract::source::{FileEntry, RelPath, Source, Vfs};
 
 use crate::dom;
 use crate::refs;
+use crate::reporter;
 
 /// 探测期 front matter 的最大读取量（字节）——探测必须廉价。
 const FM_PEEK_LIMIT: usize = 64 * 1024;
@@ -86,9 +88,11 @@ impl Frontend for MdFrontend {
         };
 
         let mut book = BookDraft::default();
-        for w in std::mem::take(&mut root.warnings) {
-            book.warn(w);
-        }
+        // 容忍轨合并点走 Reporter：镜像推壳层与权威入账同一时刻（10-contracts.md
+        // 「故障上报：三接收点统一」；probe 路径的同一批 warning 走 Outline 呈现，
+        // 不镜像——convert 先 probe 后 load，镜像两次会重复推事件）
+        reporter::Reporter::new(&mut book.warnings, env.progress)
+            .absorb(std::mem::take(&mut root.warnings));
         let total = root.count_chapters() as u64;
         let mut done: u64 = 0;
         book.toc = load_dir(vfs, env, &root, &mut done, total, &mut book)?;
@@ -103,7 +107,7 @@ impl Frontend for MdFrontend {
             root.readme.as_ref().and_then(|c| c.fm.clone())
         };
         assemble_meta(&mut book, env.config, &root, kind, lead_fm);
-        register_cover(vfs, env.config, &mut book);
+        register_cover(vfs, env.config, &mut book, env.progress);
         Ok(book)
     }
 }
@@ -648,11 +652,15 @@ fn load_chapter(
     let raw = match vfs.read(&chapter.path) {
         Ok(bytes) => bytes,
         Err(e) => {
-            book.warn(Warning::new(
-                WarningCode::PageExtractFailed,
-                Some(chapter.source_key()),
-                format!("unreadable chapter: {e}"),
-            ));
+            reporter::report(
+                &mut book.warnings,
+                env.progress,
+                Warning::new(
+                    WarningCode::PageExtractFailed,
+                    Some(chapter.source_key()),
+                    format!("unreadable chapter: {e}"),
+                ),
+            );
             *done += 1;
             env.progress.item(*done, total, chapter.path.as_str());
             return Ok(None);
@@ -663,11 +671,15 @@ fn load_chapter(
         Err(e) => (String::from_utf8_lossy(e.as_bytes()).into_owned(), true),
     };
     if lossy {
-        book.warn(Warning::new(
-            WarningCode::EncodingLossy,
-            Some(chapter.source_key()),
-            "chapter is not valid UTF-8; lossy conversion applied",
-        ));
+        reporter::report(
+            &mut book.warnings,
+            env.progress,
+            Warning::new(
+                WarningCode::EncodingLossy,
+                Some(chapter.source_key()),
+                "chapter is not valid UTF-8; lossy conversion applied",
+            ),
+        );
     }
     let text = text.trim_start_matches('\u{feff}').to_string();
 
@@ -685,7 +697,7 @@ fn load_chapter(
         .unwrap_or_else(|| chapter.title(parent));
 
     let html = render_markdown(&body, &env.config.markdown);
-    let html = post_process(&html, &chapter.path, book, vfs);
+    let html = post_process(&html, &chapter.path, book, vfs, env.progress);
     let id = book.push_chapter(title, chapter.source_key(), html);
 
     *done += 1;
@@ -728,6 +740,7 @@ pub(crate) fn post_process(
     base: &RelPath,
     book: &mut BookDraft,
     vfs: &dyn Vfs,
+    progress: &dyn ProgressSink,
 ) -> String {
     let mut html = Html::parse_fragment(html_str);
     let mut anchorizer = Anchorizer::new();
@@ -740,23 +753,33 @@ pub(crate) fn post_process(
     }
     for media_id in dom::select_ids(&html, sel_media()) {
         if let Some(src) = dom::get_attr(&html, media_id, "src") {
-            register_asset(base, &src, book, vfs);
+            register_asset(base, &src, book, vfs, progress);
         }
     }
     dom::serialize_fragment(&html)
 }
 
 /// 相对 src 以章节路径为基解析；http(s) → Remote；data: → 解码为 Owned。
-fn register_asset(base: &RelPath, src: &str, book: &mut BookDraft, vfs: &dyn Vfs) {
+fn register_asset(
+    base: &RelPath,
+    src: &str,
+    book: &mut BookDraft,
+    vfs: &dyn Vfs,
+    progress: &dyn ProgressSink,
+) {
     let key = if refs::is_external(src) {
         match src.parse::<url::Url>() {
             Ok(url) => SourceKey::Url(url),
             Err(_) => {
-                book.warn(Warning::new(
-                    WarningCode::LinkUnresolved,
-                    Some(SourceKey::Path(base.clone())),
-                    format!("invalid asset URL: {src}"),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::LinkUnresolved,
+                        Some(SourceKey::Path(base.clone())),
+                        format!("invalid asset URL: {src}"),
+                    ),
+                );
                 return;
             }
         }
@@ -764,11 +787,15 @@ fn register_asset(base: &RelPath, src: &str, book: &mut BookDraft, vfs: &dyn Vfs
         match refs::resolve_rel(base, src) {
             Some(rel) => SourceKey::Path(rel),
             None => {
-                book.warn(Warning::new(
-                    WarningCode::LinkUnresolved,
-                    Some(SourceKey::Path(base.clone())),
-                    format!("unresolvable asset reference: {src}"),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::LinkUnresolved,
+                        Some(SourceKey::Path(base.clone())),
+                        format!("unresolvable asset reference: {src}"),
+                    ),
+                );
                 return;
             }
         }
@@ -780,22 +807,30 @@ fn register_asset(base: &RelPath, src: &str, book: &mut BookDraft, vfs: &dyn Vfs
         SourceKey::Path(rel) => match vfs.read(rel) {
             Ok(bytes) => AssetData::Owned(bytes),
             Err(_) => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    Some(key.clone()),
-                    format!("local asset not found: {}", rel.as_str()),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        Some(key.clone()),
+                        format!("local asset not found: {}", rel.as_str()),
+                    ),
+                );
                 AssetData::Missing
             }
         },
         SourceKey::Url(url) if url.scheme() == "data" => match decode_data_uri(src) {
             Some(bytes) => AssetData::Owned(bytes),
             None => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    Some(key.clone()),
-                    "invalid data: URI",
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        Some(key.clone()),
+                        "invalid data: URI",
+                    ),
+                );
                 AssetData::Missing
             }
         },
@@ -859,8 +894,13 @@ fn assemble_meta(
 }
 
 /// 封面（用户供图，需求定稿）：配置路径相对源根；URL/data: 也接受。
-/// （mdbook 前端共用：封面是输出层能力，与源形态无关。）
-pub(crate) fn register_cover(vfs: &dyn Vfs, config: &ResolvedConfig, book: &mut BookDraft) {
+/// （mdbook/web 前端共用：封面是输出层能力，与源形态无关。）
+pub(crate) fn register_cover(
+    vfs: &dyn Vfs,
+    config: &ResolvedConfig,
+    book: &mut BookDraft,
+    progress: &dyn ProgressSink,
+) {
     let Some(cover) = config.book.cover.as_ref().filter(|c| !c.is_empty()) else {
         return;
     };
@@ -868,11 +908,15 @@ pub(crate) fn register_cover(vfs: &dyn Vfs, config: &ResolvedConfig, book: &mut 
         match cover.parse::<url::Url>() {
             Ok(url) => SourceKey::Url(url),
             Err(_) => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    None,
-                    format!("invalid cover URL: {cover}"),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        None,
+                        format!("invalid cover URL: {cover}"),
+                    ),
+                );
                 return;
             }
         }
@@ -880,11 +924,15 @@ pub(crate) fn register_cover(vfs: &dyn Vfs, config: &ResolvedConfig, book: &mut 
         match RelPath::new(cover) {
             Ok(rel) => SourceKey::Path(rel),
             Err(_) => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    None,
-                    format!("invalid cover path: {cover}"),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        None,
+                        format!("invalid cover path: {cover}"),
+                    ),
+                );
                 return;
             }
         }
@@ -893,22 +941,30 @@ pub(crate) fn register_cover(vfs: &dyn Vfs, config: &ResolvedConfig, book: &mut 
         SourceKey::Path(rel) => match vfs.read(rel) {
             Ok(bytes) => AssetData::Owned(bytes),
             Err(_) => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    Some(key.clone()),
-                    format!("cover not found: {}", rel.as_str()),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        Some(key.clone()),
+                        format!("cover not found: {}", rel.as_str()),
+                    ),
+                );
                 return;
             }
         },
         SourceKey::Url(url) if url.scheme() == "data" => match decode_data_uri(cover) {
             Some(bytes) => AssetData::Owned(bytes),
             None => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    Some(key.clone()),
-                    "invalid cover data: URI",
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        Some(key.clone()),
+                        "invalid cover data: URI",
+                    ),
+                );
                 return;
             }
         },

@@ -9,6 +9,7 @@ pub mod highlight_faults;
 pub mod md;
 pub mod mdbook;
 pub mod mdbook_faults;
+pub mod reporter;
 pub mod scale;
 pub mod web;
 pub mod web_dirty;

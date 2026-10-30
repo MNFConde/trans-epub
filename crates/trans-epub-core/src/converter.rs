@@ -20,6 +20,7 @@ use crate::frontends::md::MdFrontend;
 use crate::frontends::mdbook::MdbookFrontend;
 use crate::frontends::web::WebFrontend;
 use crate::pipeline::{AssetResolve, CodeWrap, Fonts, Highlight, LinkRewrite, Pass, PassCtx};
+use crate::reporter::Reporter;
 use crate::writer::Epub3Writer;
 
 /// 注入的 I/O，由壳层组装（CLI / 未来服务各自提供实现）。
@@ -125,6 +126,9 @@ impl Converter {
 
         let mut dom = BookDom::from_book(book);
         let mut stats = BuildStats::default();
+        // 容忍轨上报单点：pass 经 ctx.reporter 上报（实时镜像即刻发生），
+        // pass 边界把批次并入权威 vec——顺序与 pass 执行序一致，两路不分叉
+        let mut pass_warnings = Vec::new();
         for pass in &self.passes {
             // 链执行器在 pass 边界检查取消（每章边界由各 pass 自查）
             if io.progress.is_cancelled() {
@@ -137,8 +141,10 @@ impl Converter {
                 fetcher: io.fetcher.as_ref(),
                 progress: io.progress.as_ref(),
                 stats: &mut stats,
+                reporter: Reporter::new(&mut pass_warnings, io.progress.as_ref()),
             };
             pass.run(&mut dom, &mut ctx)?;
+            dom.warnings.append(&mut pass_warnings);
         }
 
         let book = dom.into_book();

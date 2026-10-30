@@ -25,6 +25,7 @@ use trans_epub_contract::source::{Fetcher, Source};
 use trans_epub_contract::writer::BuildStats;
 
 use crate::dom::BookDom;
+use crate::reporter::Reporter;
 
 /// 一个处理步骤。`name` 同时用作 ProgressSink::stage 的阶段名。
 ///
@@ -35,7 +36,12 @@ pub trait Pass: Send + Sync {
     fn run(&self, book: &mut BookDom, ctx: &mut PassCtx<'_>) -> Result<(), BuildError>;
 }
 
-/// pass 的执行环境：配置 + 注入的 I/O + 统计累加器。
+/// pass 的执行环境：配置 + 注入的 I/O + 统计累加器 + 故障上报单点。
+///
+/// `reporter` 的权威 vec 是执行器（[`crate::converter::Converter::convert`])
+/// 持有的中转批次，每个 pass 跑完并入 `BookDom.warnings`——实时镜像在
+/// [`Reporter::report`] 即刻发生，权威入账不晚于 pass 边界，顺序与
+/// pass 执行序一致。
 pub struct PassCtx<'a> {
     pub config: &'a ResolvedConfig,
     /// 原始输入（Vfs 形态可供 pass 读文件；Pages 形态仅作参考）。
@@ -43,6 +49,8 @@ pub struct PassCtx<'a> {
     pub fetcher: &'a dyn Fetcher,
     pub progress: &'a dyn ProgressSink,
     pub stats: &'a mut BuildStats,
+    /// 容忍轨上报单点：report = 实时镜像 + 批次入账（两路同源不分叉）。
+    pub reporter: Reporter<'a>,
 }
 
 impl PassCtx<'_> {

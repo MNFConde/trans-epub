@@ -15,7 +15,7 @@ use std::time::Duration;
 use clap::{Args, Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use trans_epub_core::contract::config::ResolvedConfig;
-use trans_epub_core::contract::error::BuildError;
+use trans_epub_core::contract::error::{BuildError, Warning};
 use trans_epub_core::contract::frontend::OutlineItem;
 use trans_epub_core::contract::progress::ProgressSink;
 use trans_epub_core::contract::source::{FileEntry, RelPath, Source, Vfs, VfsError};
@@ -247,7 +247,7 @@ fn run_crawl(args: &CrawlArgs) -> Result<u8, String> {
     let mut discovered =
         dispatch_discovery(&fetcher, &args.start, &discover_cfg, progress.as_ref())?;
     for w in &discovered.warnings {
-        eprintln!("trans-epub: warning [{}]: {}", w.code, w.message);
+        eprintln!("trans-epub: warning {}", format_warning(w));
     }
 
     if args.common.dry_run {
@@ -267,7 +267,7 @@ fn run_crawl(args: &CrawlArgs) -> Result<u8, String> {
         progress.stage("fetch");
         discovered.fetch_pages(&fetcher, &discover_cfg, Some(progress.as_ref()));
         for w in &discovered.warnings {
-            eprintln!("trans-epub: warning [{}]: {}", w.code, w.message);
+            eprintln!("trans-epub: warning {}", format_warning(w));
         }
     }
     if discovered.pages.is_empty() {
@@ -673,11 +673,7 @@ impl ProgressSink for TerminalProgress {
         if self.quiet {
             return;
         }
-        if let Ok(mut guard) = self.bar.lock() {
-            if let Some(bar) = guard.take() {
-                bar.finish_and_clear();
-            }
-        }
+        clear_bar(self);
         eprintln!("==> {name}");
     }
 
@@ -701,9 +697,39 @@ impl ProgressSink for TerminalProgress {
         }
     }
 
+    fn warning(&self, w: &Warning) {
+        // 实时镜像（10-contracts.md「故障上报：三接收点统一」）：stderr 逐条
+        // 呈现；权威汇总仍只有结尾 BuildReport 一份，两路格式同源（format_warning）
+        if self.quiet {
+            return;
+        }
+        clear_bar(self);
+        eprintln!("trans-epub: warning {}", format_warning(w));
+    }
+
     fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
     }
+}
+
+/// 收起进行中的进度条再打整行（stage / warning 共用，避免行交错）。
+fn clear_bar(progress: &TerminalProgress) {
+    if let Ok(mut guard) = progress.bar.lock() {
+        if let Some(bar) = guard.take() {
+            bar.finish_and_clear();
+        }
+    }
+}
+
+/// warning 的人读格式（`[code] source: message`）：实时行与结尾汇总表
+/// 同一来源，两路呈现永不分叉。
+fn format_warning(w: &Warning) -> String {
+    let source = w
+        .source
+        .as_ref()
+        .map(|k| format!(" {k}:"))
+        .unwrap_or_default();
+    format!("[{}]{} {}", w.code, source, w.message)
 }
 
 // ---------------------------------------------------------------------------
@@ -719,12 +745,7 @@ pub fn render_report_text(report: &BuildReport) -> String {
     if !report.warnings.is_empty() {
         out.push_str(&format!("\nwarnings ({}):", report.warnings.len()));
         for w in &report.warnings {
-            let source = w
-                .source
-                .as_ref()
-                .map(|k| format!(" {k}:"))
-                .unwrap_or_default();
-            out.push_str(&format!("\n  [{}]{} {}", w.code, source, w.message));
+            out.push_str(&format!("\n  {}", format_warning(w)));
         }
     }
     out

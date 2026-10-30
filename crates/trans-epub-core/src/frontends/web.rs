@@ -30,12 +30,14 @@ use trans_epub_contract::config::{ResolvedConfig, WebCfg};
 use trans_epub_contract::error::{BuildError, Warning, WarningCode};
 use trans_epub_contract::frontend::{Frontend, LoadEnv, Outline, OutlineItem, Probe};
 use trans_epub_contract::ir::{Asset, AssetData, BookDraft, ChapterId, SourceKey, TocItem};
+use trans_epub_contract::progress::ProgressSink;
 use trans_epub_contract::source::{FetchedPage, Source};
 use url::Url;
 
 use crate::dom;
 use crate::frontends::md::decode_data_uri;
 use crate::refs;
+use crate::reporter;
 
 pub struct WebFrontend;
 
@@ -90,13 +92,12 @@ impl Frontend for WebFrontend {
             ));
         };
         let mut book = BookDraft::default();
+        // 容忍轨合并点走 Reporter（镜像 + 入账同一时刻；probe 侧同批
+        // warning 走 Outline 呈现，不镜像——避免 convert 先 probe 后 load 推两次）
         let (prepared, warnings) = prepare_pages(pages);
-        for w in warnings {
-            book.warn(w);
-        }
-        for w in validate_web_cfg(&env.config.web) {
-            book.warn(w);
-        }
+        reporter::Reporter::new(&mut book.warnings, env.progress).absorb(warnings);
+        reporter::Reporter::new(&mut book.warnings, env.progress)
+            .absorb(validate_web_cfg(&env.config.web));
 
         let mut first_doc_title: Option<String> = None;
         let total = prepared.len() as u64;
@@ -104,7 +105,7 @@ impl Frontend for WebFrontend {
             if env.progress.is_cancelled() {
                 return Err(BuildError::Cancelled);
             }
-            let loaded = load_page(page, &env.config.web, &mut book);
+            let loaded = load_page(page, &env.config.web, &mut book, env.progress);
             if let Some(id) = loaded.chapter {
                 book.toc.push(TocItem {
                     chapter: Some(id),
@@ -119,7 +120,7 @@ impl Frontend for WebFrontend {
         }
 
         assemble_meta(&mut book, env.config, first_doc_title);
-        register_cover(env.config, &mut book);
+        register_cover(env.config, &mut book, env.progress);
         Ok(book)
     }
 }
@@ -301,26 +302,39 @@ fn probe_title(page: &PreparedPage, cfg: &WebCfg) -> String {
 // load：正文抽取
 // ---------------------------------------------------------------------------
 
-fn load_page(page: &PreparedPage, cfg: &WebCfg, book: &mut BookDraft) -> LoadedPage {
+fn load_page(
+    page: &PreparedPage,
+    cfg: &WebCfg,
+    book: &mut BookDraft,
+    progress: &dyn ProgressSink,
+) -> LoadedPage {
     let key = SourceKey::Url(page.url.clone());
     let (text, lossy) = decode_page(page);
     if lossy {
-        book.warn(Warning::new(
-            WarningCode::EncodingLossy,
-            Some(key.clone()),
-            "page is not valid in its declared encoding; lossy conversion applied",
-        ));
+        reporter::report(
+            &mut book.warnings,
+            progress,
+            Warning::new(
+                WarningCode::EncodingLossy,
+                Some(key.clone()),
+                "page is not valid in its declared encoding; lossy conversion applied",
+            ),
+        );
     }
 
     let mut doc = Html::parse_document(&text);
     let doc_title = doc_title(&doc);
     let chain = compile_chain(cfg, &mut Vec::new()); // 校验 warning 已由 validate_web_cfg 记过
     let Some(root_id) = find_root(&doc, &chain).map(|el| el.id()) else {
-        book.warn(Warning::new(
-            WarningCode::PageExtractFailed,
-            Some(key),
-            format!("no content root found in {}", page.url),
-        ));
+        reporter::report(
+            &mut book.warnings,
+            progress,
+            Warning::new(
+                WarningCode::PageExtractFailed,
+                Some(key),
+                format!("no content root found in {}", page.url),
+            ),
+        );
         return LoadedPage {
             chapter: None,
             doc_title,
@@ -336,7 +350,7 @@ fn load_page(page: &PreparedPage, cfg: &WebCfg, book: &mut BookDraft) -> LoadedP
             continue;
         }
         if let Some(src) = dom::get_attr(&doc, media_id, "src") {
-            register_asset(&page.url, &src, book);
+            register_asset(&page.url, &src, book, progress);
         }
     }
 
@@ -468,8 +482,8 @@ fn collapse_ws(s: &str) -> String {
 
 /// 相对 src 以页面 URL 为基规范化为绝对 URL；http(s) → Remote、data: →
 /// 解码为 Owned。不改动 HTML 属性。
-fn register_asset(page_url: &Url, src: &str, book: &mut BookDraft) {
-    let key = asset_key(page_url, src, book);
+fn register_asset(page_url: &Url, src: &str, book: &mut BookDraft, progress: &dyn ProgressSink) {
+    let key = asset_key(page_url, src, book, progress);
     let Some(key) = key else {
         return; // 失败已在 asset_key 里 warning
     };
@@ -483,11 +497,15 @@ fn register_asset(page_url: &Url, src: &str, book: &mut BookDraft) {
         match decode_data_uri(url.as_str()) {
             Some(bytes) => AssetData::Owned(bytes),
             None => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    Some(key.clone()),
-                    "invalid data: URI",
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        Some(key.clone()),
+                        "invalid data: URI",
+                    ),
+                );
                 AssetData::Missing
             }
         }
@@ -498,7 +516,12 @@ fn register_asset(page_url: &Url, src: &str, book: &mut BookDraft) {
 }
 
 /// src → 资产键：data: / http(s)（绝对或以页面 URL join 相对）。
-fn asset_key(page_url: &Url, src: &str, book: &mut BookDraft) -> Option<SourceKey> {
+fn asset_key(
+    page_url: &Url,
+    src: &str,
+    book: &mut BookDraft,
+    progress: &dyn ProgressSink,
+) -> Option<SourceKey> {
     let (target, _) = refs::split_fragment(src);
     if target.is_empty() {
         return None; // 纯锚点 src：无意义图片引用，不登记
@@ -514,11 +537,15 @@ fn asset_key(page_url: &Url, src: &str, book: &mut BookDraft) -> Option<SourceKe
             Some(SourceKey::Url(url))
         }
         None => {
-            book.warn(Warning::new(
-                WarningCode::LinkUnresolved,
-                Some(SourceKey::Url(page_url.clone())),
-                format!("unresolvable asset reference: {src}"),
-            ));
+            reporter::report(
+                &mut book.warnings,
+                progress,
+                Warning::new(
+                    WarningCode::LinkUnresolved,
+                    Some(SourceKey::Url(page_url.clone())),
+                    format!("unresolvable asset reference: {src}"),
+                ),
+            );
             None
         }
     }
@@ -549,7 +576,7 @@ fn assemble_meta(book: &mut BookDraft, config: &ResolvedConfig, first_doc_title:
 
 /// 封面（Pages 世界）：仅接受 URL / data: URI；相对路径需要文件树源，
 /// 给 warning 而不是静默丢弃。
-fn register_cover(config: &ResolvedConfig, book: &mut BookDraft) {
+fn register_cover(config: &ResolvedConfig, book: &mut BookDraft, progress: &dyn ProgressSink) {
     let Some(cover) = config.book.cover.as_ref().filter(|c| !c.is_empty()) else {
         return;
     };
@@ -557,20 +584,28 @@ fn register_cover(config: &ResolvedConfig, book: &mut BookDraft) {
         match cover.parse::<Url>() {
             Ok(url) => SourceKey::Url(url),
             Err(_) => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    None,
-                    format!("invalid cover URL: {cover}"),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        None,
+                        format!("invalid cover URL: {cover}"),
+                    ),
+                );
                 return;
             }
         }
     } else {
-        book.warn(Warning::new(
-            WarningCode::AssetFetchFailed,
-            None,
-            "cover path requires a file-tree source; use a URL or data: URI for Pages",
-        ));
+        reporter::report(
+            &mut book.warnings,
+            progress,
+            Warning::new(
+                WarningCode::AssetFetchFailed,
+                None,
+                "cover path requires a file-tree source; use a URL or data: URI for Pages",
+            ),
+        );
         return;
     };
     let SourceKey::Url(url) = &key else {
@@ -580,11 +615,15 @@ fn register_cover(config: &ResolvedConfig, book: &mut BookDraft) {
         match decode_data_uri(cover) {
             Some(bytes) => AssetData::Owned(bytes),
             None => {
-                book.warn(Warning::new(
-                    WarningCode::AssetFetchFailed,
-                    Some(key.clone()),
-                    "invalid cover data: URI",
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    progress,
+                    Warning::new(
+                        WarningCode::AssetFetchFailed,
+                        Some(key.clone()),
+                        "invalid cover data: URI",
+                    ),
+                );
                 return;
             }
         }

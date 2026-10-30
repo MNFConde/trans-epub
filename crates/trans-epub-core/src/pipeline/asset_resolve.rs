@@ -31,7 +31,7 @@ impl Pass for AssetResolve {
             // 1) Remote → 拉取（离线模式直接降级）
             if let Some(url) = remote_url(book, &key) {
                 if !ctx.config.assets.remote {
-                    book.warn(Warning::new(
+                    ctx.reporter.report(Warning::new(
                         WarningCode::AssetFetchFailed,
                         Some(key.clone()),
                         "remote assets disabled (assets.remote = false)",
@@ -46,7 +46,7 @@ impl Pass for AssetResolve {
                         }
                     }
                     Err(err) => {
-                        book.warn(Warning::new(
+                        ctx.reporter.report(Warning::new(
                             WarningCode::AssetFetchFailed,
                             Some(key.clone()),
                             format!("fetch {url} failed: {err}"),
@@ -65,7 +65,7 @@ impl Pass for AssetResolve {
                 continue;
             };
             if bytes.len() as u64 > ctx.config.assets.max_file_bytes {
-                book.warn(Warning::new(
+                ctx.reporter.report(Warning::new(
                     WarningCode::AssetTooLarge,
                     Some(key.clone()),
                     format!(
@@ -78,7 +78,7 @@ impl Pass for AssetResolve {
                 continue;
             }
             if total_bytes + bytes.len() as u64 > ctx.config.assets.max_total_bytes {
-                book.warn(Warning::new(
+                ctx.reporter.report(Warning::new(
                     WarningCode::AssetTooLarge,
                     Some(key.clone()),
                     format!(
@@ -90,7 +90,7 @@ impl Pass for AssetResolve {
                 continue;
             }
             if paths::detect_media_type(&key, bytes).is_none() {
-                book.warn(Warning::new(
+                ctx.reporter.report(Warning::new(
                     WarningCode::AssetUnsupported,
                     Some(key.clone()),
                     format!("unsupported asset type: {key}"),

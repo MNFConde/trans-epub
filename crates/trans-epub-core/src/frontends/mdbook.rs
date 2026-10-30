@@ -38,6 +38,7 @@ use trans_epub_contract::source::{RelPath, Source, Vfs};
 
 use crate::frontends::md::{post_process, register_cover, render_markdown};
 use crate::refs;
+use crate::reporter;
 
 pub struct MdbookFrontend;
 
@@ -88,9 +89,9 @@ impl Frontend for MdbookFrontend {
         let items = parse_summary(&String::from_utf8_lossy(&bytes));
 
         let mut book = BookDraft::default();
-        for w in root.warnings {
-            book.warn(w);
-        }
+        // 容忍轨合并点走 Reporter（镜像 + 入账同一时刻；probe 侧同批
+        // warning 走 Outline 呈现，不镜像——避免 convert 先 probe 后 load 推两次）
+        reporter::Reporter::new(&mut book.warnings, env.progress).absorb(root.warnings);
         let mut ctx = LoadCtx {
             vfs,
             env,
@@ -124,7 +125,7 @@ impl Frontend for MdbookFrontend {
             .description
             .clone()
             .or_else(|| env.config.book.description.clone());
-        register_cover(vfs, env.config, &mut book);
+        register_cover(vfs, env.config, &mut book, env.progress);
         Ok(book)
     }
 }
@@ -555,14 +556,18 @@ fn load_items(
     for item in items {
         if let Some(rel) = item.resolved_link(ctx.base) {
             if !rel.file_name().to_lowercase().ends_with(".md") {
-                book.warn(Warning::new(
-                    WarningCode::StructureAmbiguous,
-                    Some(SourceKey::Path(rel.clone())),
-                    format!(
-                        "summary link is not a markdown file, skipped: {}",
-                        rel.as_str()
+                reporter::report(
+                    &mut book.warnings,
+                    ctx.env.progress,
+                    Warning::new(
+                        WarningCode::StructureAmbiguous,
+                        Some(SourceKey::Path(rel.clone())),
+                        format!(
+                            "summary link is not a markdown file, skipped: {}",
+                            rel.as_str()
+                        ),
                     ),
-                ));
+                );
                 continue;
             }
             // 先父后子：ChapterId 按加载顺序递增 = spine 序（父章在前）
@@ -586,11 +591,15 @@ fn load_items(
         }
         if item.is_draft() {
             if ctx.env.config.mdbook.skip_drafts {
-                book.warn(Warning::new(
-                    WarningCode::StructureAmbiguous,
-                    Some(SourceKey::Path(ctx.base.clone())),
-                    format!("draft chapter skipped: {}", item.title),
-                ));
+                reporter::report(
+                    &mut book.warnings,
+                    ctx.env.progress,
+                    Warning::new(
+                        WarningCode::StructureAmbiguous,
+                        Some(SourceKey::Path(ctx.base.clone())),
+                        format!("draft chapter skipped: {}", item.title),
+                    ),
+                );
                 continue;
             }
             out.push(TocItem {
@@ -627,11 +636,15 @@ fn load_chapter(
     let bytes = match ctx.vfs.read(rel) {
         Ok(bytes) => bytes,
         Err(e) => {
-            book.warn(Warning::new(
-                WarningCode::PageExtractFailed,
-                Some(key),
-                format!("unreadable chapter: {e}"),
-            ));
+            reporter::report(
+                &mut book.warnings,
+                ctx.env.progress,
+                Warning::new(
+                    WarningCode::PageExtractFailed,
+                    Some(key),
+                    format!("unreadable chapter: {e}"),
+                ),
+            );
             ctx.done += 1;
             ctx.env.progress.item(ctx.done, ctx.total, rel.as_str());
             return Ok(None);
@@ -642,11 +655,15 @@ fn load_chapter(
         Err(e) => (String::from_utf8_lossy(e.as_bytes()).into_owned(), true),
     };
     if lossy {
-        book.warn(Warning::new(
-            WarningCode::EncodingLossy,
-            Some(key.clone()),
-            "chapter is not valid UTF-8; lossy conversion applied",
-        ));
+        reporter::report(
+            &mut book.warnings,
+            ctx.env.progress,
+            Warning::new(
+                WarningCode::EncodingLossy,
+                Some(key.clone()),
+                "chapter is not valid UTF-8; lossy conversion applied",
+            ),
+        );
     }
     let text = text.trim_start_matches('\u{feff}');
 
@@ -659,12 +676,11 @@ fn load_chapter(
         warnings: Vec::new(),
     };
     let expanded = expand_directives(text, &mut expand);
-    for w in expand.warnings {
-        book.warn(w);
-    }
+    // 指令攒的局部批次在入账点合并：镜像与权威 vec 同时刻、同顺序
+    reporter::Reporter::new(&mut book.warnings, ctx.env.progress).absorb(expand.warnings);
 
     let html = render_markdown(&expanded, &ctx.env.config.markdown);
-    let html = post_process(&html, rel, book, ctx.vfs);
+    let html = post_process(&html, rel, book, ctx.vfs, ctx.env.progress);
     let id = book.push_chapter(title, key, html);
     ctx.done += 1;
     ctx.env.progress.item(ctx.done, ctx.total, rel.as_str());

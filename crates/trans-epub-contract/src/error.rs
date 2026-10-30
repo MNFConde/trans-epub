@@ -58,6 +58,9 @@ pub enum WarningCode {
     DuplicateSource,
     /// 代码块语言/主题名无法解析（取决于 unknown_language_fallback 决定降级方式）。
     HighlightSkipped,
+    /// 字体管线降级（2026-10-30 增）：下载/校验/子集/改名任一步失败——
+    /// 能降级的回落 preset 子集或跳过内嵌并继续，不中止构建。
+    FontFallback,
 }
 
 impl WarningCode {
@@ -74,6 +77,7 @@ impl WarningCode {
             WarningCode::EncodingLossy => "encoding-lossy",
             WarningCode::DuplicateSource => "duplicate-source",
             WarningCode::HighlightSkipped => "highlight-skipped",
+            WarningCode::FontFallback => "font-fallback",
         }
     }
 }

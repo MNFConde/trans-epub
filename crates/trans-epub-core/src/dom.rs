@@ -107,10 +107,6 @@ impl BookDom {
                 .collect(),
         }
     }
-
-    pub fn warn(&mut self, warning: Warning) {
-        self.warnings.push(warning);
-    }
 }
 
 // ---------------------------------------------------------------------------
