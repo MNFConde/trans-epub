@@ -1,11 +1,11 @@
 ---
 type: architecture
 status: active
-summary: "trans-epub 公共契约：输入源两形态（Vfs/Pages）、前端 trait（probe/load 分离）、IR 枢轴 BookDraft 及其不变量、SourceKey 规范化、输出（Writer/BuildOutput/BuildReport）、错误双轨、进度与取消、ResolvedConfig；契约 crate 的归属判据与稳定性变更流程"
+summary: "trans-epub 公共契约：输入源两形态（Vfs/Pages）、前端 trait（probe/load 分离）与前端义务清单、pdf 前端设计要点、IR 枢轴 BookDraft 及其不变量、SourceKey 规范化、输出（Writer/BuildOutput/BuildReport）与 EPUB 输出增强三件、错误双轨与故障上报三接收点、进度与取消、ResolvedConfig；契约 crate 的归属判据与稳定性变更流程"
 tags: [trans-epub, architecture, contract, ir, source, frontend-trait]
 contains: [design, contract]
 created: 2026-10-24
-updated: 2026-10-26
+updated: 2026-10-30
 related: ["../requirements.md", "00-overview.md"]
 authoring_mode: ai_generated
 ---
@@ -129,6 +129,19 @@ pub struct LoadEnv<'a> {
 5. **单项失败 → warning 继续**：绝不因单个文件/页面失败中止，更不允许 panic。
 6. **不做通用 HTML 处理**：高亮、链接改写、折行归 pass，前端不做——这是防止职责漂移的关键条款。
 
+### pdf 前端：设计要点（2026-10-30 评估定稿，未实施）
+
+非扫描版 PDF → EPUB 的**重排路线**（提取文字与插图重建语义，非页面图嵌入）。输入侧第四前端，与 Writer 处"未来 pdf 输出格式"的注释无关。架构上是标准新前端活：归一为 BookDraft 后，后续管线（asset-resolve / writer / golden）零改动复用；实施时按上述义务清单执行，并在 30-frontends.md 增补专节。要点：
+
+- **引擎选型（实施时拍板）**：建议 `mupdf-rs` 优先——AGPL-3.0 与本项目 License 同源（ADR 0012），MuPDF 已随 mutool 冒烟验证过生态；备选 `pdfium-render`（提取质量相当，但六个发布目标各带一份动态库，Releases 流水线负担不小）。
+- **乱码防线**：非标准编码 / 缺 ToUnicode 的嵌入字体提取出乱码——按提取结果 CJK/控制字符比例检查，报容忍轨 warning，不静默产出坏书。
+- **文字复原**：断词跨行合并（de-hyphenation）、连字 fi/fl 规范化、CJK 不插假空格（PDF 内 CJK 无空格是常态，勿按西文逻辑补格）。
+- **噪音剔除**：跨页重复模式检测剔除页眉/页脚/页码——reflow 质量第一杀手。
+- **结构重建**：标题层级按同文档内字号相对聚类（不拍绝对 pt 值）；代码块按等宽字体聚类；阅读顺序 XY-cut；表格第一版放弃（区域截图 + warning）；矢量插图渲染位图为有损降级（+ warning）；链接保留 URI annotation，内部 GoTo 尽力转锚点、失败降级纯文本。
+- **扫描版显式拒绝**：整本文本量为 0 → 致命轨"疑似扫描版需 OCR"，不静默出空书。
+- **确定性**：同一 PDF 字节必须产出同一 EPUB 字节（golden 回归可测），字号聚类等浮点/顺序判定钉死确定性排序。
+- 每个启发式配一条 `WarningCode` 扩码（只增不改语义）与测试；故障上报按三接收点口径。
+
 ## IR 枢轴：BookDraft
 
 IR 是 frontends 的终点、pipeline 的起点，也是整个架构的中心契约。
@@ -221,6 +234,16 @@ pub struct BuildReport {
 
 Writer 返回**字节而非文件路径**是刻意决定：core 不碰文件系统，产物处置权在壳层。
 
+### EPUB 输出增强三件（2026-10-30 评估定稿，未实施）
+
+对照 Pandoc 默认模板与 EPUB 惯例的差距盘点：基础盘不动（代码保真线已是差异化强项，暗色模式超 Pandoc 默认），补三件，全部落在 writer 层、前端零改动：
+
+1. **脚注语义化**（收益最大）：comrak 脚注现渲染为普通链接 + 章末 `.footnotes` 节；改 Pandoc 式 `<aside epub:type="footnote">` + `<a epub:type="noteref">` + 回链结构，解锁 Kobo/iBooks 等阅读器的弹窗脚注。
+2. **landmarks nav + OPF guide**：nav.xhtml 现只有 `epub:type="toc"`；补 `epub:type="landmarks"`（含 Begin Reading 锚点）与 OPF `<guide>`，供 MuPDF 类老引擎快跳转。
+3. **base.css 微补**：`hyphens` / `-epub-hyphens: auto`（须配 `lang` 属性传递）、`widows` / `orphans`、表与图 `break-inside: avoid`。
+
+每件随实施走本文档先行 + golden 再生流程；真机弹窗表现记 manual-checklist。
+
 ## 错误模型：双轨
 
 ```rust
@@ -249,17 +272,31 @@ pub enum WarningCode {
 - **容忍轨**：warning 进 `BookDraft.warnings`，最终进 BuildReport——机器可读（code + 定位），服务与 `--strict` 模式据此决策。
 - core 的输入处理路径**禁止 panic**；壳层（服务）可另加 `catch_unwind` 保险，但那不是 core 的契约。
 
+### 故障上报：三接收点统一（2026-10-30 增）
+
+出口形态（CLI / GUI / 未来服务）可以不同，**接收点唯一**——共三处，全部落在既有契约上，不新建平行故障体系：
+
+1. **实时**：`ProgressSink::warning`（见下节，默认空实现）——容忍轨构建中逐条镜像推送。
+2. **结局**：`BuildReport.warnings`——容忍轨权威汇总；实时通道只是它的视图。
+3. **致命**：`Result<BuildOutput, BuildError>` 返回值。致命故障**不走** warning 通道：出口必须处理它，不存在漏看；warning 可忽略，所以才配专门通道。
+
+三路数据同源：core 内部收敛到一个 **Reporter**（收集 `BookDraft.warnings` + 同时刻镜像推 `ProgressSink::warning`）单点出口，各组件不直接操作 warnings vec——两路永不分叉。组件失败点随此扩码补齐 `WarningCode`（只增不改语义；已知缺口如 ttf 解析失败的降级路径——fuzz 曾在其相邻路径抓到 panic，此类"能降级的失败"应报 warning 退默认形态而非中止）。
+
+**出口适配是壳层的事**（core 不碰 stderr / UI / 网络，同 Writer 只回字节的分界）：CLI 做实时 stderr 行 + 结尾汇总表 + 退出码映射；GUI 把回调投递到 UI 线程再呈现（core 在工作线程跑），`Warning.source`（SourceKey）供点击定位到章/页；服务可选流式（SSE / JSON 行）透传实时事件，report 本就 Serialize 可直接作 API 响应字段、致命轨映射 HTTP 状态码。未来新形态（TUI / WASM 前端等）实现同一个 `ProgressSink`、读同一份 report、处理同一个 `Err`，core 零改动。
+
 ## 进度与取消
 
 ```rust
 pub trait ProgressSink: Send + Sync {
     fn stage(&self, name: &str);                        // 阶段切换：probe/load/各 pass 名/write
     fn item(&self, done: u64, total: u64, note: &str);   // 细粒度心跳（按章/按页）
+    fn warning(&self, w: &Warning) {}                    // 容忍轨实时镜像；默认空实现对现有实现零破坏
     fn is_cancelled(&self) -> bool { false }             // 取消检查点
 }
 ```
 
 - `stage` 用字符串而非枚举：**自定义 pass 也要能报进度**，不因扩展改契约类型（开闭原则的细节体现）。
+- `warning`（2026-10-30 增）是容忍轨的实时镜像：pipeline 记 warning 的同一时刻推给壳层，供 CLI/GUI 实时呈现；权威汇总仍只有 BuildReport 一份（见"故障上报：三接收点统一"）。默认空实现——不关心实时的调用方（含既有实现与测试 mock）一行不改。
 - 取消是协作式的：pipeline 在 pass 边界与每章边界检查 `is_cancelled`，命中即返回 `BuildError::Cancelled`。core 自己不建线程、不起运行时。
 
 ## 配置模型

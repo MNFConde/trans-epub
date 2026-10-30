@@ -104,6 +104,24 @@ trans-epub:
     ✔ 执行结果（2026-10-28，137→160）：sniff 魔数链×2（含扩展名优先与 data: URI 现状口径钉子）；code_wrap Hard pass 层×4（**实证跨 span 折行点落染色 span 内**——"let x = " 8 列触顶换行插进数字 span 开头）；fuzz 语料回灌（WSL 4722 条→三层抽样 40 条/60KB 入库，删 6MB 旧字体种子）；asset_faults×5（拉取失败/离线降级/超单文件上限/不支持类型/坏 data URI）；web_dirty×4（坏 charset 标签/GBK 真字节无损耗/500 层嵌套重复 id/100KB 巨属性）；mdbook_faults×3（SUMMARY 断链跳过/include 区间越界/**展开不递归语义钉子**——内层指令原文保留不告警）；highlight_faults×3（未知语言静默回退/关回退则告警/100KB 单 token 0.06s 无卡顿）；polite 传输层故障×2（MockServer 加 FaultKind 注入面：半截响应头断连→网络错误且重试到底 3 次；声明 1MB 发 64 字节截断→不得静默接受）；mutation 抽样 3 条红绿验证；门禁全绿 fmt/clippy/160/epubcheck
     ✔ GitHub Releases 首发（2026-10-29 执行完毕，仓库 github.com/MNFConde/trans-epub）：CI 门禁流水线（fmt/clippy/test + mutool 冒烟步 + 文档三脚本 + MSRV 1.85.0 真工具链门，ci.yml）+ Releases 流水线（tag → 六目标构建+本机冒烟 → 资产上传 → 自举烟测，release.yml）；rustls+ring 六目标交叉实证全过（linux musl 双目标原生 runner + musl-tools / macos 双目标 arm runner 交叉 / win 双目标 MSVC ARM64 组件）；**首发即抓真缺陷一处已修**——跨平台确定性缺口（确定性此前只在 Windows 成立）：zip crate 按编译目标写 central directory host system 字节（cfg! 编译期、API 不可配）+ include_str! 文本随检出平台行尾漂移；修 = writer 按 EOCD→central directory 逐条目归一 system=Unix(3)（不做数据区签名扫描防误改压缩流）+ .gitattributes 全仓 LF + golden 再生（diff review 仅 create_system 变化）+ epub3 单测×2，165 全绿（40bd10f）；Windows 资产打包 Compress-Archive 反斜杠分隔符非标 → 改 bsdtar 标准 zip（d0c4c82）；v0.1.0 六资产发布，六平台本机冒烟与 golden 字节一致、自举烟测（下载→解包→linux 双目标真机转换 golden 比对）全绿
     ☐ crates.io 名称可用性确认（暂缓非放弃——ADR 0013；上架时按其两条路径另立决策）
+  故障上报模块（设计定稿 2026-10-30，契约草图已落 10-contracts.md「故障上报：三接收点统一」；实施按契约先行流程——本节是设计落地待办，非新决策）:
+    ☐ 契约落地：ProgressSink 加 warning 镜像回调（默认空实现对现有实现与测试 mock 零破坏）+ WarningCode 按组件失败点扩码（已知缺口：ttf 解析失败降级路径——fuzz 曾在其相邻路径抓 panic，"能降级的失败"应报 warning 退默认形态而非中止；码名实施时定）
+    ☐ core Reporter 收敛点：收集 BookDraft.warnings + 同时刻镜像推送单点化，各组件散落 warnings.push 收敛进来（致命/容忍归属按双轨纪律逐点复核：能降级记 warning 继续、不能降级 Fatal 中止、core 禁 panic；每个上报点配一测试）
+    ☐ CLI 出口适配：warning 实时 stderr 行（受 verbosity 控制）+ 结尾汇总表沿用 + 退出码语义复核（0/1/2 现状 vs "成功带 warning"独立码；改语义则先动本契约文档）
+    ☐ e2e 验证：实时通道与 BuildReport 两路一致（复用 TRANS_EPUB_FAULT 注入面 + MockFetcher/MockServer FaultKind 注入面）
+    ☐ GUI / 服务形态是纯消费方：各实现一个 ProgressSink + 读 report + 处理 Err 即可，core 零改动（二期/三期触发时零成本接入，不在本模块实施范围）
+  EPUB 输出增强三件（2026-10-30 评估定稿，对照 Pandoc；契约草图 10-contracts.md「EPUB 输出增强三件」；全在 writer 层，前端零改动）:
+    ☐ 脚注语义化：aside epub:type="footnote" + a epub:type="noteref" + 回链（Pandoc 式，解锁 Kobo/iBooks 弹窗脚注；现状=comrak 普通链接 + 章末 .footnotes）
+    ☐ landmarks nav（epub:type="landmarks" + Begin Reading 锚点）+ OPF guide（MuPDF 类老引擎快跳转）
+    ☐ base.css 微补：hyphens/-epub-hyphens:auto（配 lang 属性传递）+ widows/orphans + 表图 break-inside:avoid
+    ☐ 每件配 golden 再生 + 真机抽验点（弹窗脚注各引擎表现记 manual-checklist）
+  pdf 前端（2026-10-30 评估定稿，未实施；设计要点 10-contracts.md「pdf 前端：设计要点」；非扫描版重排路线——实施时契约先行 + 30-frontends.md 专节）:
+    ☐ 引擎选型拍板：mupdf-rs 优先评估（AGPL 与项目同源 + mutool 生态已验证）；备选 pdfium-render（六平台动态库负担）
+    ☐ 契约落地：WarningCode 扩码（乱码/矢量图降级/表格放弃等，码名实施时定）+ 扫描版拒绝归致命轨口径
+    ☐ 文字复原三件套：de-hyphenation + 连字 fi/fl 规范化 + CJK 不插假空格
+    ☐ 噪音剔除：页眉/页脚/页码跨页重复模式检测
+    ☐ 结构重建：字号相对聚类标题 / 等宽聚类代码块 / XY-cut 阅读顺序 / 表格一期放弃（截图 + warning）/ 链接 URI 保留、GoTo 尽力降级
+    ☐ 确定性钉子：同 PDF 字节 → 同 EPUB 字节（golden 回归），聚类浮点/顺序判定钉死
   二期 · GUI（暂缓）:
     ☐ GUI 框架选型：Tauri 复用 core vs egui 纯 Rust（决策后立 ADR）
     ☐ 结构预览（Outline 勾选剔除）+ 配置 + 出书
