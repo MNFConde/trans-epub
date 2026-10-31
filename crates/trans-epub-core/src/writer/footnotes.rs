@@ -119,41 +119,19 @@ fn top_level_lis_to_asides(inner: &str) -> Option<String> {
     found.then_some(asides)
 }
 
-/// 下一个顶层 `<li` 的位置：跳过脚注体内嵌套的 li（深度配对）。
-/// `rest` 总是从顶层语境起扫（上一个顶层 li 已整体消费），首个合法
-/// `<li` 即顶层；深度机制只对破损形态兜底。
+/// 下一个顶层 `<li` 的位置。`rest` 总是从顶层语境起扫——上一个顶层 li
+/// 已连同其嵌套内容被 match_li_close 整体消费，剩余串里的 `<li` 必为
+/// 顶层（嵌套 li 的深度配对是 match_li_close 的职责，此处不重复）。
 fn find_top_level_li(rest: &str) -> Option<usize> {
     let mut cursor = 0;
-    let mut depth = 0i32;
-    while cursor < rest.len() {
-        let open = rest[cursor..].find("<li").map(|i| cursor + i);
-        let close = rest[cursor..].find("</li>").map(|i| cursor + i);
-        let take_open = match (open, close) {
-            (Some(op), Some(cv)) => op < cv,
-            (Some(_), None) => true,
-            (None, Some(_)) => false,
-            (None, None) => return None,
-        };
-        if take_open {
-            let pos = open.expect("checked");
-            // `<li` 后须是空白或 `>`（防 <link 之类误配）
-            let tail = &rest[pos + 3..];
-            let well_formed = tail.starts_with('>') || tail.starts_with(char::is_whitespace);
-            if depth == 0 && well_formed {
-                return Some(pos);
-            }
-            if well_formed {
-                depth += 1;
-            }
-            cursor = pos + 3;
-        } else {
-            let cv = close.expect("checked");
-            depth -= 1;
-            cursor = cv + "</li>".len();
-            if depth < 0 {
-                return None; // 破损形态
-            }
+    while let Some(rel) = rest[cursor..].find("<li") {
+        let pos = cursor + rel;
+        // `<li` 后须是空白或 `>`（防 <link 之类前缀误配）
+        let tail = &rest[pos + 3..];
+        if tail.starts_with('>') || tail.starts_with(char::is_whitespace) {
+            return Some(pos);
         }
+        cursor = pos + 3;
     }
     None
 }
@@ -307,5 +285,12 @@ mod tests {
     fn author_link_to_fnref_not_misannotated() {
         let html = "<p><a href=\"#fnref-1\">back</a></p>";
         assert_eq!(semanticize(html), html);
+    }
+
+    #[test]
+    fn find_top_level_li_rejects_li_prefixed_tags() {
+        // `<link>` 以 `<li` 开头，但非 li 元素——跳过后才命中真 li
+        assert_eq!(find_top_level_li("<link><li id=\"fn-1\">x</li>"), Some(6));
+        assert_eq!(find_top_level_li("no li here"), None);
     }
 }

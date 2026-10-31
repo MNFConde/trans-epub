@@ -375,20 +375,39 @@ fn first_chapter_id(book: &BookDraft) -> Option<ChapterId> {
     book.chapters.first().map(|c| c.id)
 }
 
-/// OPF guide reference 条目；标签固定英文串（同 landmarks，不承担 i18n）。
+/// 快跳入口的单点决策（landmarks 与 guide 共用——dryer 0.92 对的收敛点，
+/// 「有哪些入口、href 是什么」只活在这里）：cover 页（有封面时）与 spine
+/// 首章。kind 用 landmarks 的 epub:type 词汇；guide 侧 bodymatter→text
+/// 的类型名映射留在其渲染器。
+fn quick_jump_targets(
+    has_cover_page: bool,
+    first_chapter: Option<ChapterId>,
+) -> Vec<(&'static str, String, &'static str)> {
+    let mut targets = Vec::new();
+    if has_cover_page {
+        targets.push(("cover", "Text/cover.xhtml".to_string(), "Cover"));
+    }
+    if let Some(id) = first_chapter {
+        targets.push((
+            "bodymatter",
+            paths::chapter_href_from_nav(id),
+            "Begin Reading",
+        ));
+    }
+    targets
+}
+
+/// OPF guide reference 条目（EPUB2 legacy，epubcheck 5.2.1 实证 3.3 包内
+/// 合法）；toc 恒在最前（与 nav.xhtml 的 toc-nav-then-landmarks 结构呼应），
+/// 其后按公共决策序。标签固定英文串（不承担 i18n）。
 fn render_guide_items(has_cover_page: bool, first_chapter: Option<ChapterId>) -> String {
     let mut items = String::new();
-    if has_cover_page {
-        items.push_str(
-            "    <reference type=\"cover\" title=\"Cover\" href=\"Text/cover.xhtml\"/>\n",
-        );
-    }
     items
         .push_str("    <reference type=\"toc\" title=\"Table of Contents\" href=\"nav.xhtml\"/>\n");
-    if let Some(id) = first_chapter {
+    for (kind, href, label) in quick_jump_targets(has_cover_page, first_chapter) {
+        let guide_type = if kind == "cover" { "cover" } else { "text" };
         items.push_str(&format!(
-            "    <reference type=\"text\" title=\"Begin Reading\" href=\"Text/{}\"/>\n",
-            paths::chapter_file_name(id)
+            "    <reference type=\"{guide_type}\" title=\"{label}\" href=\"{href}\"/>\n"
         ));
     }
     items
@@ -455,19 +474,12 @@ fn render_nav(book: &BookDraft, has_cover_page: bool) -> String {
 }
 
 /// landmarks nav 条目（hidden nav，nav 不进 spine——对 `#toc` 的片段
-/// 自引用被 epubcheck RSC-011 拒绝，故只列 cover 与首章）。标签为固定
-/// 英文串：结构导航由 epub:type 驱动，不承担 i18n。
+/// 自引用被 epubcheck RSC-011 拒绝，故只列 cover 与首章）。
 fn render_landmarks_items(has_cover_page: bool, first_chapter: Option<ChapterId>) -> String {
     let mut items = String::new();
-    if has_cover_page {
-        items.push_str(
-            "      <li><a epub:type=\"cover\" href=\"Text/cover.xhtml\">Cover</a></li>\n",
-        );
-    }
-    if let Some(id) = first_chapter {
+    for (kind, href, label) in quick_jump_targets(has_cover_page, first_chapter) {
         items.push_str(&format!(
-            "      <li><a epub:type=\"bodymatter\" href=\"{}\">Begin Reading</a></li>\n",
-            paths::chapter_href_from_nav(id)
+            "      <li><a epub:type=\"{kind}\" href=\"{href}\">{label}</a></li>\n"
         ));
     }
     items
@@ -861,6 +873,11 @@ mod tests {
             ),
             "{both}"
         );
+        // 顺序钉：toc 恒在最前，其后按公共决策序（cover、text）
+        let toc = both.find("type=\"toc\"").expect("toc");
+        let cover = both.find("type=\"cover\"").expect("cover");
+        let text = both.find("type=\"text\"").expect("text");
+        assert!(toc < cover && cover < text, "{both}");
 
         let bare = render_guide_items(false, None);
         assert!(bare.contains("type=\"toc\""), "toc 恒在：{bare}");
