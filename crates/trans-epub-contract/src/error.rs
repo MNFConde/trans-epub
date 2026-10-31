@@ -87,3 +87,31 @@ impl std::fmt::Display for WarningCode {
         f.write_str(self.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 表驱动钉子：每个变体的 kebab-case 名（新增变体漏配 as_str 或
+    /// 改名即红；同时锁 Display 与 as_str 同源）。
+    #[test]
+    fn warning_code_as_str_is_exhaustive_kebab() {
+        let table = [
+            (WarningCode::AssetFetchFailed, "asset-fetch-failed"),
+            (WarningCode::AssetTooLarge, "asset-too-large"),
+            (WarningCode::AssetUnsupported, "asset-unsupported"),
+            (WarningCode::LinkUnresolved, "link-unresolved"),
+            (WarningCode::PageExtractFailed, "page-extract-failed"),
+            (WarningCode::DirectiveUnresolved, "directive-unresolved"),
+            (WarningCode::StructureAmbiguous, "structure-ambiguous"),
+            (WarningCode::EncodingLossy, "encoding-lossy"),
+            (WarningCode::DuplicateSource, "duplicate-source"),
+            (WarningCode::HighlightSkipped, "highlight-skipped"),
+            (WarningCode::FontFallback, "font-fallback"),
+        ];
+        for (code, name) in table {
+            assert_eq!(code.as_str(), name);
+            assert_eq!(code.to_string(), name, "Display 必须与 as_str 同源");
+        }
+    }
+}

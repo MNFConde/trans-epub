@@ -1097,4 +1097,253 @@ mod tests {
         );
         assert_eq!(split_numeric_prefix("42"), ("42".to_string(), None));
     }
+
+    /// 记录型进度 sink：钉 load 的计数序列（起点与步进）。
+    #[derive(Default)]
+    struct RecordingProgress {
+        items: std::sync::Mutex<Vec<(u64, u64, String)>>,
+    }
+    impl ProgressSink for RecordingProgress {
+        fn stage(&self, _name: &str) {}
+        fn item(&self, done: u64, total: u64, note: &str) {
+            self.items
+                .lock()
+                .unwrap()
+                .push((done, total, note.to_string()));
+        }
+    }
+
+    #[test]
+    fn fm_order_rank_beats_prefix_rank_across_values() {
+        // 档位钉子（2026-10-31 变异缺口）：FM order 恒为第 0 档、数字前缀
+        // 第 1 档——FM 的 order 值再大也不与前缀比数值，只在同档内比
+        let vfs = MemVfs::new()
+            .insert("10-z.md", "---\norder = 10\n---\n\n# Z")
+            .insert("02-b.md", "# B");
+        let (_, root) = detect_with(&vfs).unwrap();
+        assert_eq!(root.files[0].stem, "10-z");
+        assert_eq!(root.files[1].stem, "02-b");
+    }
+
+    #[test]
+    fn load_progress_counts_each_chapter_to_total() {
+        use trans_epub_contract::config::ResolvedConfig;
+        let vfs = MemVfs::new()
+            .insert("README.md", "# Home")
+            .insert("01-a.md", "# A")
+            .insert("02-b.md", "# B");
+        let config = ResolvedConfig::default();
+        let progress = RecordingProgress::default();
+        let env = LoadEnv {
+            config: &config,
+            progress: &progress,
+        };
+        MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        let calls = progress.items.lock().unwrap();
+        let last = calls.last().expect("load 至少回报一次章级进度");
+        assert_eq!(
+            last.0, last.1,
+            "末次进度必须 done==total（计数起点 0、每章 +1 的钉子）"
+        );
+        assert_eq!(last.1, 3, "README + 2 章 = 3 个计数单元");
+    }
+
+    #[test]
+    fn single_file_book_title_derives_from_stem() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // md-file 无 FM 无配置书名 → 文件名派生；filter(!is_empty) 钉子：
+        // 反转后恒落 Untitled（2026-10-31 变异缺口）
+        let vfs = MemVfs::new().insert("notes.md", "# Notes");
+        let config = ResolvedConfig::default();
+        let env = LoadEnv {
+            config: &config,
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert_eq!(book.meta.title, "notes");
+    }
+
+    #[test]
+    fn configured_language_flows_to_meta() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // language 过滤的钉子：非空配置值必须直达 meta（反转后恒落 "en"）
+        let mut config = ResolvedConfig::default();
+        config.book.language = Some("zh-CN".into());
+        let vfs = MemVfs::new().insert("README.md", "# Home");
+        let env = LoadEnv {
+            config: &config,
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert_eq!(book.meta.language, "zh-CN");
+    }
+
+    #[test]
+    fn first_h1_text_handles_inline_markup() {
+        // '>' 复位 in_tag 的钉子：内联标记之后的正文不得被吞
+        //（2026-10-31 变异缺口：复位反转后书名只剩标记前文本）
+        assert_eq!(
+            first_h1_text("<h1>A <strong>b</strong> c</h1>").as_deref(),
+            Some("A b c")
+        );
+    }
+
+    #[test]
+    fn invalid_utf8_chapter_warns_encoding_lossy() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // 坏字节章的 lossy 旗标钉子：反转后 EncodingLossy 永不发出
+        //（2026-10-31 变异缺口）
+        let vfs = MemVfs::new()
+            .insert("README.md", "# Home")
+            .insert("01-bad.md", vec![b'#', b' ', 0xff, 0xfe, b'\n']);
+        let config = ResolvedConfig::default();
+        let env = LoadEnv {
+            config: &config,
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert!(
+            book.warnings
+                .iter()
+                .any(|w| w.code == WarningCode::EncodingLossy),
+            "坏字节章必须发 EncodingLossy warning"
+        );
+    }
+
+    #[test]
+    fn data_uri_cover_is_decoded_into_assets() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // data: 封面走本进程解码的守卫钉子：反转后落入 Remote 臂，
+        // assets 永远拿不到解码字节（2026-10-31 变异缺口）
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("data:image/png;base64,aGVsbG8=".into());
+        let vfs = MemVfs::new().insert("README.md", "# Home");
+        let env = LoadEnv {
+            config: &config,
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert!(
+            book.assets
+                .values()
+                .any(|a| matches!(&a.data, AssetData::Owned(b) if b.as_slice() == b"hello")),
+            "data: 封面必须解码为 Owned 字节"
+        );
+        assert!(book.meta.cover.is_some());
+    }
+
+    #[test]
+    fn front_matter_line_cap_boundary() {
+        // 512 行上限边界钉子（> 反转成 >= 后恰 512 行被保守放弃）
+        let fm_512 = format!(
+            "---\n{}---\nbody",
+            (0..512).map(|i| format!("k{i} = 1\n")).collect::<String>()
+        );
+        assert!(split_front_matter(&fm_512).0.is_some(), "恰 512 行 FM 有效");
+        let fm_513 = format!(
+            "---\n{}---\nbody",
+            (0..513).map(|i| format!("k{i} = 1\n")).collect::<String>()
+        );
+        assert!(split_front_matter(&fm_513).0.is_none(), "513 行保守放弃");
+    }
+
+    #[test]
+    fn detect_rejects_non_markdown_trees() {
+        // detect 的 None 分支钉子：空源 / 无 .md 均不识别
+        let empty = MemVfs::new();
+        assert!(detect_with(&empty).is_none(), "空源不识别");
+        let no_md = MemVfs::new().insert("x.txt", "hello");
+        assert!(detect_with(&no_md).is_none(), "无 .md 不识别");
+    }
+
+    #[test]
+    fn cover_local_file_is_owned_asset() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // 文件树封面：读取成功 → Owned 字节落 assets（register_cover 的
+        // Path 成功分支此前无测试）
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("img/cover.png".into());
+        let vfs = MemVfs::new()
+            .insert("README.md", "# Home")
+            .insert("img/cover.png", vec![1u8, 2, 3]);
+        let env = LoadEnv {
+            config: &config,
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert!(
+            book.assets
+                .values()
+                .any(|a| matches!(&a.data, AssetData::Owned(b) if b.as_slice() == [1, 2, 3])),
+            "文件封面必须以 Owned 字节登记"
+        );
+        assert!(book.meta.cover.is_some());
+    }
+
+    #[test]
+    fn cover_remote_url_registers_remote_asset() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // http(s) 封面只登记 Remote（拉取属 asset-resolve pass），load 期零网络
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("https://example.com/x.png".into());
+        let vfs = MemVfs::new().insert("README.md", "# Home");
+        let env = LoadEnv {
+            config: &config,
+            progress: &NoProgress,
+        };
+        let book = MdFrontend
+            .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+            .unwrap();
+        assert!(
+            book.assets
+                .values()
+                .any(|a| matches!(&a.data, AssetData::Remote(_)))
+        );
+        assert!(book.meta.cover.is_some());
+    }
+
+    #[test]
+    fn cover_invalid_inputs_warn_and_skip() {
+        use trans_epub_contract::config::ResolvedConfig;
+        use trans_epub_contract::progress::NoProgress;
+        // 三条失败分支钉子：URL 解析败 / 本地文件缺失 / data: 解码败——
+        // 各记 AssetFetchFailed 且不登记封面（2026-10-31 CRAP 补测）
+        for cover in ["http://[", "missing.png", "data:image/png;base64,@@@"] {
+            let mut config = ResolvedConfig::default();
+            config.book.cover = Some(cover.into());
+            let vfs = MemVfs::new().insert("README.md", "# Home");
+            let env = LoadEnv {
+                config: &config,
+                progress: &NoProgress,
+            };
+            let book = MdFrontend
+                .load(&Source::Vfs(std::sync::Arc::new(vfs)), &env)
+                .unwrap();
+            assert!(
+                book.warnings
+                    .iter()
+                    .any(|w| w.code == WarningCode::AssetFetchFailed),
+                "{cover} 必须记 AssetFetchFailed"
+            );
+            assert!(book.meta.cover.is_none(), "{cover} 不得登记封面");
+        }
+    }
 }

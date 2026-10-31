@@ -915,4 +915,68 @@ mod tests {
             matches!(book.assets.values().next(), Some(a) if matches!(a.data, AssetData::Owned(_)))
         );
     }
+
+    #[test]
+    fn cover_relative_path_warns_for_pages_source() {
+        use trans_epub_contract::progress::NoProgress;
+        // Pages 世界没有文件树：相对路径封面必须给 warning 而非静默丢弃
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("cover.png".into());
+        let mut book = BookDraft::default();
+        register_cover(&config, &mut book, &NoProgress);
+        assert!(
+            book.warnings
+                .iter()
+                .any(|w| w.code == WarningCode::AssetFetchFailed
+                    && w.message.contains("file-tree source")),
+            "warnings: {:?}",
+            book.warnings
+        );
+        assert!(book.meta.cover.is_none());
+    }
+
+    #[test]
+    fn cover_invalid_url_warns() {
+        use trans_epub_contract::progress::NoProgress;
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("http://[".into());
+        let mut book = BookDraft::default();
+        register_cover(&config, &mut book, &NoProgress);
+        assert!(
+            book.warnings
+                .iter()
+                .any(|w| w.code == WarningCode::AssetFetchFailed),
+            "warnings: {:?}",
+            book.warnings
+        );
+        assert!(book.meta.cover.is_none());
+    }
+
+    #[test]
+    fn cover_data_uri_owned_and_remote_registered() {
+        use trans_epub_contract::progress::NoProgress;
+        // data: → Owned 解码；http(s) → Remote 登记（load 期零网络）
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("data:image/png;base64,aGVsbG8=".into());
+        let mut book = BookDraft::default();
+        register_cover(&config, &mut book, &NoProgress);
+        assert!(
+            book.assets
+                .values()
+                .any(|a| matches!(&a.data, AssetData::Owned(b) if b.as_slice() == b"hello")),
+            "warnings: {:?}",
+            book.warnings
+        );
+        assert!(book.meta.cover.is_some());
+
+        let mut config = ResolvedConfig::default();
+        config.book.cover = Some("https://example.com/x.png".into());
+        let mut book = BookDraft::default();
+        register_cover(&config, &mut book, &NoProgress);
+        assert!(
+            book.assets
+                .values()
+                .any(|a| matches!(&a.data, AssetData::Remote(_)))
+        );
+    }
 }
