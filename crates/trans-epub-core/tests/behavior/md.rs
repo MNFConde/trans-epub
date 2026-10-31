@@ -98,6 +98,14 @@ fn flat_structure_and_fidelity() {
         ch1.contains("xmlns:epub=\"http://www.idpf.org/2007/ops\""),
         "章节页根元素统一绑 epub 命名空间（无脚注章也一样）"
     );
+    assert!(
+        ch1.contains("lang=\"en\" xml:lang=\"en\""),
+        "章节页带语言属性（base.css 断词的前提）：{ch1}"
+    );
+    assert!(
+        utf8("OEBPS/Styles/base.css", &output).contains("hyphens: auto"),
+        "断词规则随 base.css 下发"
+    );
 
     // 元数据：根 README 的 front matter title → 书名
     let opf = utf8("OEBPS/content.opf", &output);
@@ -116,6 +124,10 @@ fn flat_structure_and_fidelity() {
         "{nav}"
     );
     assert!(!nav.contains("href=\"#toc\""), "toc 自引用被 RSC-011 拒绝");
+    assert!(
+        nav.contains("lang=\"en\" xml:lang=\"en\""),
+        "nav 同样带语言属性"
+    );
     assert!(opf.contains("  <guide>\n"), "{opf}");
     assert!(
         opf.contains("<reference type=\"toc\" title=\"Table of Contents\" href=\"nav.xhtml\"/>"),

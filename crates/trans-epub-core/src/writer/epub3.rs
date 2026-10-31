@@ -151,6 +151,7 @@ impl Writer for Epub3Writer {
                 let page = render_chapter_page(
                     &chapter.title,
                     &footnotes::semanticize(&chapter.html),
+                    &book.meta.language,
                     &config.theme.extra_css,
                 );
                 add(&paths::chapter_zip_path(chapter.id), page.as_bytes(), false)?;
@@ -433,7 +434,7 @@ fn render_nav(book: &BookDraft, has_cover_page: bool) -> String {
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{lang}" xml:lang="{lang}">
 <head>
   <title>{title}</title>
 </head>
@@ -447,6 +448,7 @@ fn render_nav(book: &BookDraft, has_cover_page: bool) -> String {
 </html>
 "#,
         title = xml_escape(&book.meta.title),
+        lang = xml_escape(&book.meta.language),
         list = list,
         landmarks_block = landmarks_block,
     )
@@ -510,7 +512,7 @@ fn render_nav_items(items: &[TocItem], out: &mut String) {
 // 章节页 / 封面页
 // ---------------------------------------------------------------------------
 
-fn render_chapter_page(title: &str, body_html: &str, extra_css: &str) -> String {
+fn render_chapter_page(title: &str, body_html: &str, language: &str, extra_css: &str) -> String {
     let extra = if extra_css.trim().is_empty() {
         String::new()
     } else {
@@ -522,7 +524,7 @@ fn render_chapter_page(title: &str, body_html: &str, extra_css: &str) -> String 
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{lang}" xml:lang="{lang}">
 <head>
   <title>{title}</title>
   <link rel="stylesheet" type="text/css" href="{base}"/>
@@ -535,6 +537,7 @@ fn render_chapter_page(title: &str, body_html: &str, extra_css: &str) -> String 
 </html>
 "#,
         title = xml_escape(title),
+        lang = xml_escape(language),
         base = paths::style_href("base.css"),
         code = paths::style_href("code.css"),
         admonition = paths::style_href("admonition.css"),
@@ -826,6 +829,17 @@ mod tests {
 
         // 无封面无章节 → 空条目（render_nav 据此整块省略）
         assert_eq!(render_landmarks_items(false, None), "");
+    }
+
+    #[test]
+    fn chapter_page_carries_language_for_hyphenation() {
+        let page = render_chapter_page("T", "<p>x</p>", "zh-CN", "");
+        assert!(
+            page.contains(
+                "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"zh-CN\" xml:lang=\"zh-CN\">"
+            ),
+            "{page}"
+        );
     }
 
     #[test]

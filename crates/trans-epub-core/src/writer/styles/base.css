@@ -57,8 +57,16 @@ hr { border: 0; border-top: 1px solid #d0d7de; margin: 1.5em 0; }
 ul, ol { padding-left: 1.5em; }
 li.task-list-item { list-style: none; }
 
-.footnotes { font-size: 0.9em; color: #57606a; }
+/* 脚注视觉：writer 语义化出的 aside 形态与第三方透传的 .footnotes 节同观感 */
+.footnotes, aside.footnote { font-size: 0.9em; color: #57606a; }
 .footnotes h2 { font-size: 1.1em; }
+
+/* 断词与断页（EPUB 输出增强三件之三）：断词的语言前提是文档带 lang
+ * （writer 写在章节页与 nav 的 html 根）；代码块禁断词 */
+html { -webkit-hyphens: auto; -epub-hyphens: auto; hyphens: auto; }
+pre, code { -webkit-hyphens: none; -epub-hyphens: none; hyphens: none; }
+p { widows: 2; orphans: 2; }
+table, figure, img { break-inside: avoid; page-break-inside: avoid; }
 
 @media (prefers-color-scheme: dark) {
   body { color: #e6edf3; }
