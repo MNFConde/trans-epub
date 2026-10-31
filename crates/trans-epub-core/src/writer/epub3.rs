@@ -21,6 +21,7 @@ use trans_epub_contract::writer::Writer;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+use super::footnotes;
 use super::paths::{self, AssignedAsset};
 use crate::pipeline::highlight;
 
@@ -144,10 +145,13 @@ impl Writer for Epub3Writer {
                 add(&paths::cover_zip_path(), page.as_bytes(), false)?;
             }
 
-            // 章节
+            // 章节（脚注先做 EPUB3 语义化：comrak 形态 → noteref/footnote/backlink）
             for chapter in &book.chapters {
-                let page =
-                    render_chapter_page(&chapter.title, &chapter.html, &config.theme.extra_css);
+                let page = render_chapter_page(
+                    &chapter.title,
+                    &footnotes::semanticize(&chapter.html),
+                    &config.theme.extra_css,
+                );
                 add(&paths::chapter_zip_path(chapter.id), page.as_bytes(), false)?;
             }
 
@@ -449,7 +453,7 @@ fn render_chapter_page(title: &str, body_html: &str, extra_css: &str) -> String 
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head>
   <title>{title}</title>
   <link rel="stylesheet" type="text/css" href="{base}"/>

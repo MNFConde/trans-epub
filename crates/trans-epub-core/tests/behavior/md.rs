@@ -79,7 +79,25 @@ fn flat_structure_and_fidelity() {
 
     let ch3 = utf8("OEBPS/Text/ch00003.xhtml", &output);
     assert!(ch3.contains("admonition"), "GitHub alert → admonition");
-    assert!(ch3.contains("footnotes"), "脚注 section");
+    assert!(
+        ch3.contains(
+            "<aside class=\"footnote footnote-item\" epub:type=\"footnote\" id=\"fn-1\" role=\"doc-footnote\">"
+        ),
+        "脚注体 → aside 语义化（id 保留锚点兼容）：{ch3}"
+    );
+    assert!(
+        ch3.contains("<a epub:type=\"noteref\" role=\"doc-noteref\" href=\"#fn-1\""),
+        "脚注引用 noteref：{ch3}"
+    );
+    assert!(
+        ch3.contains("epub:type=\"backlink\""),
+        "脚注回链 backlink：{ch3}"
+    );
+    assert!(!ch3.contains("data-footnotes"), "comrak 包裹层摘除：{ch3}");
+    assert!(
+        ch1.contains("xmlns:epub=\"http://www.idpf.org/2007/ops\""),
+        "章节页根元素统一绑 epub 命名空间（无脚注章也一样）"
+    );
 
     // 元数据：根 README 的 front matter title → 书名
     let opf = utf8("OEBPS/content.opf", &output);
