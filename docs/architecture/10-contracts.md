@@ -5,7 +5,7 @@ summary: "trans-epub 公共契约：输入源两形态（Vfs/Pages）、前端 t
 tags: [trans-epub, architecture, contract, ir, source, frontend-trait]
 contains: [design, contract]
 created: 2026-10-24
-updated: 2026-10-30
+updated: 2026-10-31
 related: ["../requirements.md", "00-overview.md"]
 authoring_mode: ai_generated
 ---
@@ -234,15 +234,21 @@ pub struct BuildReport {
 
 Writer 返回**字节而非文件路径**是刻意决定：core 不碰文件系统，产物处置权在壳层。
 
-### EPUB 输出增强三件（2026-10-30 评估定稿，未实施）
+### EPUB 输出增强三件（2026-10-30 评估定稿；2026-10-31 契约定稿并实施）
 
-对照 Pandoc 默认模板与 EPUB 惯例的差距盘点：基础盘不动（代码保真线已是差异化强项，暗色模式超 Pandoc 默认），补三件，全部落在 writer 层、前端零改动：
+对照 Pandoc 默认模板与 EPUB 惯例的差距盘点：基础盘不动（代码保真线已是差异化强项，暗色模式超 Pandoc 默认），补三件，全部落在 writer 层、前端零改动。合法性与词汇以下列 epubcheck 5.2.1（EPUB 3.3 规则）最小探针实证为准：
 
-1. **脚注语义化**（收益最大）：comrak 脚注现渲染为普通链接 + 章末 `.footnotes` 节；改 Pandoc 式 `<aside epub:type="footnote">` + `<a epub:type="noteref">` + 回链结构，解锁 Kobo/iBooks 等阅读器的弹窗脚注。
-2. **landmarks nav + OPF guide**：nav.xhtml 现只有 `epub:type="toc"`；补 `epub:type="landmarks"`（含 Begin Reading 锚点）与 OPF `<guide>`，供 MuPDF 类老引擎快跳转。
-3. **base.css 微补**：`hyphens` / `-epub-hyphens: auto`（须配 `lang` 属性传递）、`widows` / `orphans`、表与图 `break-inside: avoid`。
+1. **脚注语义化**（收益最大）：comrak 0.55 脚注输出为引用 `<sup class="footnote-ref"><a href="#fn-N" … data-footnote-ref>` + 章末 `<section class="footnotes" data-footnotes><ol><li id="fn-N">` 体；writer 渲染章节页时做形态转换（`writer/footnotes.rs`，按 comrak 确定性形态做字符串级识别，不引入 HTML 重序列化）：
+   - 引用 `<a>` 加 `epub:type="noteref" role="doc-noteref"`；
+   - 每个 `<li id="fn-N">` 变 `<aside class="footnote footnote-item" epub:type="footnote" id="fn-N" role="doc-footnote">`（section/ol 包裹层摘除，aside 平铺章末，id 原样保留——锚点兼容）；
+   - 回链 `<a class="footnote-backref">` 加 `epub:type="backlink" role="doc-backlink"`（aria-label 保留）；
+   - 章节页 `<html>` 统一加 `xmlns:epub="http://www.idpf.org/2007/ops"`（epub:type 的命名空间前提，无论该章有无脚注）；
+   - 形态不匹配（如 web 前端透传的第三方脚注标记）原样通过，不猜不改；识别失败不报错（writer 无容忍轨出口，宁缺勿错）。
+   - 解锁 Kobo/iBooks 弹窗脚注；base.css 以 `aside.footnote` 延续原 `.footnotes` 缩排视觉。
+2. **landmarks nav + OPF guide**：nav.xhtml 增第二个 nav `epub:type="landmarks"`（`hidden="hidden"`）——条目仅两项：cover（有封面页时）与 bodymatter（首章，"Begin Reading"）；**不放 toc 自引用**（nav 不进 spine，对 `#toc` 的片段引用被 epubcheck RSC-011 实证拒绝）。content.opf 增 EPUB2 legacy `<guide>`（探针实证 3.3 包内合法）：`cover`（有封面页时）/ `toc` / `text`（首章）三类 reference。地标与 guide 的 title 用固定英文串——结构导航由 `epub:type`/`type` 驱动，标签不承担 i18n。
+3. **base.css 微补**：`-epub-hyphens` / `hyphens: auto`（`pre`/`code` 显式 `none`——代码块禁断词）；生效前提是文档带语言，writer 同步给章节页与 nav 的 `<html>` 写 `lang` + `xml:lang`（取 `book.meta.language`）；`p { widows: 2; orphans: 2 }`；`table, figure, img { break-inside: avoid; page-break-inside: avoid }`。
 
-每件随实施走本文档先行 + golden 再生流程；真机弹窗表现记 manual-checklist。
+每件随实施走 golden 再生（diff 人工确认）+ epubcheck 门；真机弹窗表现记 manual-checklist。
 
 ## 错误模型：双轨
 
