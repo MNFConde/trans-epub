@@ -110,6 +110,8 @@ trans-epub:
     ✔ CLI 出口适配：TerminalProgress::warning 实时 stderr 行（--quiet 关；先收进度条防行交错）+ format_warning 单一格式源（实时行/结尾汇总表/crawl 三处同源）+ 退出码复核维持 0/1/2 不设"成功带 warning"独立码（--strict 已盖"warning 即失败"，结论记 60-cli.md）
     ✔ e2e 验证：core behavior/reporter.rs 四条（pass 期注入 / load 期注入 page-extract+directive 双码 / 净书零事件 / 致命轨不泄 warning 通道；镜像序 == report.warnings 全等）+ cli e2e/warning_mirror.rs 三条（stderr 实时行码多重集 == --report json warnings + message 逐字在场、--quiet 门、致命非 warning 行）；176 测试全绿（165→+11）
     ☐ GUI / 服务形态是纯消费方：各实现一个 ProgressSink + 读 report + 处理 Err 即可，core 零改动（二期/三期触发时零成本接入，不在本模块实施范围）
+  测试收尾遗留（2026-10-31 ub-mode 四件套体检复核；更正节见 tmp/toolchain-audit-2026-10-31.md 第五节）:
+    ☐ md detect（CC=21）CRAP 压到 30 线以下需拆函数分摊分支——纯补测需 ~98% 覆盖不现实；封面三条失败分支/无 .md 分支本轮已补测，拆分随下次 md 前端结构改动一并做（golden 钉行为，勿单独纯重构）
   EPUB 输出增强三件（2026-10-30 评估定稿，对照 Pandoc；契约草图 10-contracts.md「EPUB 输出增强三件」；全在 writer 层，前端零改动）:
     ☐ 脚注语义化：aside epub:type="footnote" + a epub:type="noteref" + 回链（Pandoc 式，解锁 Kobo/iBooks 弹窗脚注；现状=comrak 普通链接 + 章末 .footnotes）
     ☐ landmarks nav（epub:type="landmarks" + Begin Reading 锚点）+ OPF guide（MuPDF 类老引擎快跳转）
