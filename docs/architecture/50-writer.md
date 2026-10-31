@@ -5,7 +5,7 @@ summary: "trans-epub EPUB3 写出器设计：BookDraft→字节、产出物结�
 tags: [trans-epub, architecture, writer, epub3, css, theme]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-29
+updated: 2026-10-31
 related: ["../requirements.md", "10-contracts.md", "20-core.md"]
 authoring_mode: ai_generated
 ---
@@ -40,8 +40,8 @@ authoring_mode: ai_generated
 mimetype                        # application/epub+zip（首个条目、不压缩）
 META-INF/container.xml
 OEBPS/
-├── content.opf                 # 元数据 + manifest + spine（= chapters 顺序）
-├── nav.xhtml                   # 嵌套目录（toc 树原样映射，不拍平）
+├── content.opf                 # 元数据 + manifest + spine（= chapters 顺序）+ guide（EPUB2 legacy 快跳转）
+├── nav.xhtml                   # 嵌套目录（toc 树原样映射，不拍平）+ landmarks nav（hidden）
 ├── Text/ch00001.xhtml…         # 一章一文件，按 spine 序命名
 │   └── font-license.xhtml      # 字体许可页（仅内嵌带许可字体时，spine 末尾）
 ├── Images/…  Media/…           # 资产按类型分目录（命名规则出自 writer::paths）
@@ -58,7 +58,10 @@ EPUB 内部路径规则集中在 `writer::paths` 模块单点定义，link-rewri
 ## 各部分要点
 
 - **spine**：chapters 顺序即阅读顺序（IR 不变量）；`linear="yes"`。
-- **nav.xhtml**：toc 树直接映射（part 分组节点 = 无链接的标题层级），阅读器侧显示完整嵌套。
+- **nav.xhtml**：toc 树直接映射（part 分组节点 = 无链接的标题层级），阅读器侧显示完整嵌套；外加 `epub:type="landmarks"` hidden nav（cover + bodymatter=Begin Reading；不放 toc 自引用——nav 不进 spine，epubcheck RSC-011 拒绝）。
+- **OPF guide**：EPUB2 legacy `<guide>`（cover/toc/text 三 reference，epubcheck 5.2.1 实证 3.3 包内合法），供 MuPDF 类老引擎快跳转。
+- **脚注语义化**：`writer/footnotes.rs` 按 comrak 确定性形态字符串级转换（引用→`epub:type="noteref"`、`li`→`aside epub:type="footnote"`、回链→`epub:type="backlink"`；section/ol 包裹摘除、id 保留）；形态不匹配原样通过（writer 无容忍轨出口）。契约细节见 10-contracts.md「EPUB 输出增强三件」。
+- **语言属性**：章节页与 nav 的 `<html>` 写 `lang`+`xml:lang`（book.meta.language）——base.css `hyphens: auto` 的生效前提；`pre/code` 显式禁断词。
 - **元数据**：BookMeta → DC 元素；language 必填（BCP-47）；unique-identifier 确定性派生（书名+源集哈希）。
 - **封面**：`meta.cover` 指向资产，可选（用户供图，需求定稿）。
 - **Missing 资产**：引用已在 link-rewrite 降级（占位文本），writer 不再处理，只保证不写悬空引用。

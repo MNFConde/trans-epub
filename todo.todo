@@ -112,11 +112,11 @@ trans-epub:
     ☐ GUI / 服务形态是纯消费方：各实现一个 ProgressSink + 读 report + 处理 Err 即可，core 零改动（二期/三期触发时零成本接入，不在本模块实施范围）
   测试收尾遗留（2026-10-31 ub-mode 四件套体检复核；更正节见 tmp/toolchain-audit-2026-10-31.md 第五节）:
     ☐ md detect（CC=21）CRAP 压到 30 线以下需拆函数分摊分支——纯补测需 ~98% 覆盖不现实；封面三条失败分支/无 .md 分支本轮已补测，拆分随下次 md 前端结构改动一并做（golden 钉行为，勿单独纯重构）
-  EPUB 输出增强三件（2026-10-30 评估定稿，对照 Pandoc；契约草图 10-contracts.md「EPUB 输出增强三件」；全在 writer 层，前端零改动）:
-    ☐ 脚注语义化：aside epub:type="footnote" + a epub:type="noteref" + 回链（Pandoc 式，解锁 Kobo/iBooks 弹窗脚注；现状=comrak 普通链接 + 章末 .footnotes）
-    ☐ landmarks nav（epub:type="landmarks" + Begin Reading 锚点）+ OPF guide（MuPDF 类老引擎快跳转）
-    ☐ base.css 微补：hyphens/-epub-hyphens:auto（配 lang 属性传递）+ widows/orphans + 表图 break-inside:avoid
-    ☐ 每件配 golden 再生 + 真机抽验点（弹窗脚注各引擎表现记 manual-checklist）
+  EPUB 输出增强三件（2026-10-30 评估定稿；2026-10-31 契约定稿并实施完毕——全在 writer 层，前端零改动；口径 10-contracts.md「EPUB 输出增强三件」）:
+    ✔ 脚注语义化（writer/footnotes.rs：comrak 形态字符串级识别——引用 a 补 noteref/doc-noteref、li 变 aside epub:type=footnote（id 保留锚点兼容、section/ol 摘除）、回链补 backlink/doc-backlink；章节页 html 根绑 xmlns:epub；形态不匹配原样通过宁缺勿错；解锁 Kobo/iBooks 弹窗脚注）
+    ✔ landmarks nav（hidden，仅 cover+bodymatter=Begin Reading；toc 自引用被 epubcheck RSC-011 拒绝故不放）+ OPF guide（EPUB2 legacy，cover/toc/text 三 reference，epubcheck 5.2.1 探针实证 3.3 包内合法）
+    ✔ base.css 微补：html 级 -webkit/-epub-/标准 hyphens:auto（pre/code 显式 none 禁断词）+ 章节页与 nav 写 lang+xml:lang（断词前提，与 dc:language 同源）+ p widows/orphans:2 + table/figure/img break-inside:avoid；.footnotes 规则扩 aside.footnote
+    ✔ 每件 golden 再生 diff 人工确认（四本仅结构行差，flat 另含脚注形态转换、tree 含封面走 cover 分支；uid 不变）+ epubcheck ALL GREEN + 203 测试全绿；真机弹窗/快跳抽验点已记 manual-checklist（待真机）
   pdf 前端（2026-10-30 评估定稿，未实施；设计要点 10-contracts.md「pdf 前端：设计要点」；非扫描版重排路线——实施时契约先行 + 30-frontends.md 专节）:
     ☐ 引擎选型拍板：mupdf-rs 优先评估（AGPL 与项目同源 + mutool 生态已验证）；备选 pdfium-render（六平台动态库负担）
     ☐ 契约落地：WarningCode 扩码（乱码/矢量图降级/表格放弃等，码名实施时定）+ 扫描版拒绝归致命轨口径

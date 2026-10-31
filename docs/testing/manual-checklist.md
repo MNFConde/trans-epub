@@ -5,7 +5,7 @@ summary: "trans-epub 真机抽验清单：MVP 里程碑合入前全量抽验；�
 tags: [trans-epub, testing, manual-checklist, epub-readers]
 contains: [checklist]
 created: 2026-10-24
-updated: 2026-10-26
+updated: 2026-10-31
 related: ["../requirements.md", "../architecture/50-writer.md"]
 authoring_mode: ai_generated
 ---
@@ -67,6 +67,7 @@ cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/flat -o fla
 - [ ] 章内链接跳转到目标章（"link to syntax"）
 - [ ] 带锚点链接落到目标标题（"good anchor"）
 - [ ] 外部链接保留可点（autolink 的 https://example.com）
+- [ ] Begin Reading / Cover 快跳入口（landmarks nav；MuPDF 类老引擎走 OPF guide——本机 mutool 冒烟过可渲染性，入口表现记各引擎）
 
 ### 图片与资产
 
@@ -79,6 +80,7 @@ cargo run -p trans-epub-cli -- crates/trans-epub-core/tests/fixtures/flat -o fla
 
 - [ ] 表格渲染为表格
 - [ ] 任务列表复选框显示且不歪
+- [ ] 脚注引用弹窗（noteref/footnote 语义化后，Kobo/iBooks 类阅读器点引用应弹卡；不支持弹窗的引擎至少可跳转，flat/02-footnotes）
 - [ ] 脚注可跳转、可回跳（flat/02-footnotes）
 - [ ] admonition 色块（NOTE 蓝 / WARNING 黄）亮暗两套下都可读
 
