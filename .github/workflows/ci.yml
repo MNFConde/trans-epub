@@ -2,6 +2,7 @@
 #   fmt → clippy -D warnings → test（含 golden 字节回归）→ mutool 渲染冒烟 → 文档三脚本
 # 外加 MSRV 门：rust-version = 1.85 已在 workspace 声明，此处用真 1.85.0 工具链验证
 # （todo.todo 测试补充战役环境矩阵第 1 块——"已声明无验证"的收口）。
+# 外加代理环境回归门：测试套件对系统代理免疫（见 proxy-immunity job 注释）。
 name: CI
 
 on:
@@ -49,6 +50,30 @@ jobs:
           python3 scripts/check-links.py
           python3 scripts/check-frontmatter.py
           python3 scripts/check-markers.py
+
+  # 开发机普遍挂本地代理（clash 等），而 reqwest 的 env NO_PROXY 不认
+  # `127.*` 通配——回环 mock 流量会被代理"洗"成 502（2026-10-31 WSL 本地
+  # 代理实证）。契约测试已显式 respect_system_proxy=false；本 job 用死端口
+  # 代理钉死"测试套件对系统代理免疫"，新测试漏配该项时当场红。
+  proxy-immunity:
+    name: 代理环境回归（测试不受系统代理影响）
+    runs-on: ubuntu-24.04
+    env:
+      HTTP_PROXY: http://127.0.0.1:9
+      HTTPS_PROXY: http://127.0.0.1:9
+      http_proxy: http://127.0.0.1:9
+      https_proxy: http://127.0.0.1:9
+      NO_PROXY: ""
+      no_proxy: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo test --workspace（死端口代理环境下全量）
+        run: cargo test --workspace
 
   msrv:
     name: MSRV 1.85 门
