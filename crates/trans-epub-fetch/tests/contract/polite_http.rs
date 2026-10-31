@@ -13,6 +13,9 @@ fn fast_config() -> PoliteConfig {
     PoliteConfig {
         min_interval: Duration::from_millis(20),
         retry_backoff: Duration::from_millis(5),
+        // 回环 mock 流量不得出系统代理：代理会把传输层故障"洗"成 502
+        //（WSL 本地代理 2026-10-31 实证），契约语义要求看到原始网络错误。
+        respect_system_proxy: false,
         ..PoliteConfig::default()
     }
 }

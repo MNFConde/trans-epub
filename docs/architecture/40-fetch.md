@@ -5,7 +5,7 @@ summary: "trans-epub-fetch 获取库（MVP3 已落地）：PoliteFetcher（reqwe
 tags: [trans-epub, architecture, fetch, crawler, robots, sitemap]
 contains: [design]
 created: 2026-10-24
-updated: 2026-10-26
+updated: 2026-10-31
 related: ["../requirements.md", "10-contracts.md", "00-overview.md"]
 authoring_mode: ai_generated
 ---
@@ -31,6 +31,7 @@ fetch 是**采集库**：把"礼貌地拿到一批已排序页面"做成可复�
 - **UA**：`trans-epub/<version> (+document conversion tool; personal use)`，可配；不伪装浏览器。
 - 超时与重试：默认超时 30s；5xx 与网络错误重试 2 次（线性退避，基准 500ms）；4xx / 策略拒绝 / 超限不重试。
 - 大小上限：Content-Length 预检 + 流式读取超限即断（默认与 AssetsCfg 单文件上限一致）。
+- **系统代理**：默认尊重系统代理设置（reqwest `system-proxy`，Linux 读环境变量、Windows 读平台设置）；`respect_system_proxy = false` 强制直连。已知边界：reqwest 的 env `NO_PROXY` 只认精确 IP / CIDR / 域名后缀，**不认 `127.*` 这类 shell 通配**（上游限制）——回环 mock 测试一律显式关代理（2026-10-31 WSL 本地代理实证：代理会把"半截响应即断连"洗成 502 状态码，传输层故障与 HTTP 状态错误不可辨）。
 - `FetchedPage.url` 采用**重定向后的最终 URL**（剥 fragment）——正文里相对引用的真实解析基。
 
 ### 页面发现（产出有序 `Vec<FetchedPage>`，顺序即书序）

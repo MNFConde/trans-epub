@@ -48,6 +48,11 @@ pub struct PoliteConfig {
     pub max_bytes: u64,
     /// 是否遵守 robots.txt（关闭即 `--ignore-robots` 语义，自负其责）。
     pub respect_robots: bool,
+    /// 是否走系统代理（reqwest `system-proxy`：Linux 读环境变量、Windows
+    /// 读平台设置）。`false` 强制直连——回环 mock 测试必须关：代理会把
+    /// 传输层故障"洗"成 502 状态码，且 env `NO_PROXY` 不认 `127.*` 通配
+    /// （reqwest 上游限制，只认精确 IP / CIDR / 域名后缀）。
+    pub respect_system_proxy: bool,
 }
 
 impl Default for PoliteConfig {
@@ -60,6 +65,7 @@ impl Default for PoliteConfig {
             min_interval: Duration::from_secs(1),
             max_bytes: 10 * 1024 * 1024,
             respect_robots: true,
+            respect_system_proxy: true,
         }
     }
 }
@@ -94,11 +100,17 @@ impl PoliteFetcher {
         // rustls-no-provider 模式要求在构造 Client 前安装进程级 crypto provider；
         // 选 ring（纯 Rust）。Err = 进程里已装过（重复构造），按幂等容忍。
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(config.user_agent.clone())
-            .timeout(config.timeout)
-            .build()
-            .unwrap_or_default();
+        let client = {
+            let builder = reqwest::blocking::Client::builder()
+                .user_agent(config.user_agent.clone())
+                .timeout(config.timeout);
+            let builder = if config.respect_system_proxy {
+                builder
+            } else {
+                builder.no_proxy()
+            };
+            builder.build().unwrap_or_default()
+        };
         Self {
             client,
             config,
@@ -249,15 +261,37 @@ impl PoliteFetcher {
 
 impl Fetcher for PoliteFetcher {
     fn fetch(&self, url: &Url) -> Result<FetchedPage, FetchError> {
-        if url.scheme() != "http" && url.scheme() != "https" {
-            return Err(FetchError::Denied(format!(
+        Self::ensure_http_scheme(url)?;
+        self.check_robots(url)?;
+        self.get_with_retry(url, self.config.max_bytes)
+    }
+
+    /// 覆写契约默认实现：用户点名单资源跳过 robots（见
+    /// [`PoliteFetcher::fetch_direct_impl`]）。`max_bytes` 显式上限
+    /// 取代配置默认（钉版字体 zip ~140MB 远超常规资产限额）。
+    fn fetch_direct(&self, url: &Url, max_bytes: Option<u64>) -> Result<FetchedPage, FetchError> {
+        self.fetch_direct_impl(url, max_bytes)
+    }
+}
+
+impl PoliteFetcher {
+    /// scheme 白名单：只收 http(s)（两条获取路径共用）。
+    fn ensure_http_scheme(url: &Url) -> Result<(), FetchError> {
+        if url.scheme() == "http" || url.scheme() == "https" {
+            Ok(())
+        } else {
+            Err(FetchError::Denied(format!(
                 "scheme not allowed: {}",
                 url.scheme()
-            )));
+            )))
         }
-        self.check_robots(url)?;
-        let host = Self::host_key(url);
+    }
 
+    /// 重试循环（两条获取路径共用）：线性退避 + 限速槽预约；
+    /// 5xx 与网络错误重试，4xx / 策略拒绝 / 超限立即失败。
+    /// `limit` 为本路径的单响应上限。
+    fn get_with_retry(&self, url: &Url, limit: u64) -> Result<FetchedPage, FetchError> {
+        let host = Self::host_key(url);
         let attempts = self.config.retries + 1;
         let mut last_err = None;
         for attempt in 1..=attempts {
@@ -266,7 +300,7 @@ impl Fetcher for PoliteFetcher {
                 std::thread::sleep(self.config.retry_backoff * attempt);
             }
             self.throttle(&host);
-            match self.raw_get(url) {
+            match self.raw_get_limited(url, limit) {
                 Ok(page) => {
                     let mut final_url = page.url.clone();
                     final_url.set_fragment(None);
@@ -289,15 +323,6 @@ impl Fetcher for PoliteFetcher {
         Err(last_err.unwrap_or_else(|| FetchError::Network("no attempt made".into())))
     }
 
-    /// 覆写契约默认实现：用户点名单资源跳过 robots（见
-    /// [`PoliteFetcher::fetch_direct_impl`]）。`max_bytes` 显式上限
-    /// 取代配置默认（钉版字体 zip ~140MB 远超常规资产限额）。
-    fn fetch_direct(&self, url: &Url, max_bytes: Option<u64>) -> Result<FetchedPage, FetchError> {
-        self.fetch_direct_impl(url, max_bytes)
-    }
-}
-
-impl PoliteFetcher {
     /// 用户明确指定的单资源获取（[`Fetcher::fetch_direct`] 的覆写）：
     /// 跳过 robots——robots 管的是"爬虫发现式抓取"，用户点名的 URL
     /// （封面图 / 钉版字体）不属此类（github.com robots 禁 release
@@ -308,41 +333,9 @@ impl PoliteFetcher {
         url: &Url,
         max_bytes: Option<u64>,
     ) -> Result<FetchedPage, FetchError> {
-        if url.scheme() != "http" && url.scheme() != "https" {
-            return Err(FetchError::Denied(format!(
-                "scheme not allowed: {}",
-                url.scheme()
-            )));
-        }
-        let host = Self::host_key(url);
+        Self::ensure_http_scheme(url)?;
         let limit = max_bytes.unwrap_or(self.config.max_bytes);
-        let attempts = self.config.retries + 1;
-        let mut last_err = None;
-        for attempt in 1..=attempts {
-            if attempt > 1 {
-                std::thread::sleep(self.config.retry_backoff * attempt);
-            }
-            self.throttle(&host);
-            match self.raw_get_limited(url, limit) {
-                Ok(page) => {
-                    let mut final_url = page.url.clone();
-                    final_url.set_fragment(None);
-                    return Ok(FetchedPage::from_bytes(
-                        final_url,
-                        page.body,
-                        page.content_type,
-                    ));
-                }
-                Err(err @ FetchError::HttpStatus { status, .. })
-                    if !(500..600).contains(&status) =>
-                {
-                    return Err(err);
-                }
-                Err(err @ (FetchError::Denied(_) | FetchError::TooLarge(_))) => return Err(err),
-                Err(err) => last_err = Some(err),
-            }
-        }
-        Err(last_err.unwrap_or_else(|| FetchError::Network("no attempt made".into())))
+        self.get_with_retry(url, limit)
     }
 }
 
