@@ -105,6 +105,29 @@ fn flat_structure_and_fidelity() {
     assert!(opf.contains("urn:uuid:"));
     assert!(opf.contains("2000-01-01T00:00:00Z"));
 
+    // landmarks nav + OPF guide（EPUB 输出增强三件之二；flat 无封面）
+    let nav = utf8("OEBPS/nav.xhtml", &output);
+    assert!(
+        nav.contains("<nav epub:type=\"landmarks\" id=\"landmarks\" hidden=\"hidden\">"),
+        "{nav}"
+    );
+    assert!(
+        nav.contains("<a epub:type=\"bodymatter\" href=\"Text/ch00001.xhtml\">Begin Reading</a>"),
+        "{nav}"
+    );
+    assert!(!nav.contains("href=\"#toc\""), "toc 自引用被 RSC-011 拒绝");
+    assert!(opf.contains("  <guide>\n"), "{opf}");
+    assert!(
+        opf.contains("<reference type=\"toc\" title=\"Table of Contents\" href=\"nav.xhtml\"/>"),
+        "{opf}"
+    );
+    assert!(
+        opf.contains(
+            "<reference type=\"text\" title=\"Begin Reading\" href=\"Text/ch00001.xhtml\"/>"
+        ),
+        "{opf}"
+    );
+
     // 报告：容忍轨
     let codes: BTreeSet<String> = output
         .report

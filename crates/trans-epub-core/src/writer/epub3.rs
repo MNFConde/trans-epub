@@ -108,7 +108,8 @@ impl Writer for Epub3Writer {
         let assigned = paths::assign_assets(&book.assets);
         let uid = derive_uid(book);
         let opf = render_opf(book, config, &assigned, &uid);
-        let nav = render_nav(book);
+        let cover_page = book.meta.cover.as_ref().and_then(|k| assigned.get(k));
+        let nav = render_nav(book, cover_page.is_some());
         let code_css = render_code_css(config, &book.fonts);
 
         let mut buf: Vec<u8> = Vec::new();
@@ -140,7 +141,7 @@ impl Writer for Epub3Writer {
             add(&paths::nav_zip_path(), nav.as_bytes(), false)?;
 
             // 封面页（可选；cover-image 属性在 opf 里）
-            if let Some(cover_asset) = book.meta.cover.as_ref().and_then(|k| assigned.get(k)) {
+            if let Some(cover_asset) = cover_page {
                 let page = render_cover_page(&cover_asset.href);
                 add(&paths::cover_zip_path(), page.as_bytes(), false)?;
             }
@@ -327,6 +328,19 @@ fn render_opf(
         .map(|d| format!("    <dc:description>{}</dc:description>\n", xml_escape(d)))
         .unwrap_or_default();
 
+    // OPF guide（EPUB2 legacy；epubcheck 5.2.1 实证 EPUB 3.3 包内合法）：
+    // MuPDF 类老引擎的快跳转入口。toc 恒在；cover/text 随条件。
+    let has_cover_page = book
+        .meta
+        .cover
+        .as_ref()
+        .and_then(|k| assigned.get(k))
+        .is_some();
+    let guide = format!(
+        "  <guide>\n{}  </guide>\n",
+        render_guide_items(has_cover_page, first_chapter_id(book))
+    );
+
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="{lang}">
@@ -340,7 +354,7 @@ fn render_opf(
 {manifest}  </manifest>
   <spine>
 {spine}  </spine>
-</package>
+{guide}</package>
 "#,
         lang = xml_escape(&book.meta.language),
         uid = uid,
@@ -351,7 +365,32 @@ fn render_opf(
         modified = FIXED_MODIFIED,
         manifest = manifest,
         spine = spine,
+        guide = guide,
     )
+}
+
+/// spine 首章 id（Begin Reading / guide text 的锚）。
+fn first_chapter_id(book: &BookDraft) -> Option<ChapterId> {
+    book.chapters.first().map(|c| c.id)
+}
+
+/// OPF guide reference 条目；标签固定英文串（同 landmarks，不承担 i18n）。
+fn render_guide_items(has_cover_page: bool, first_chapter: Option<ChapterId>) -> String {
+    let mut items = String::new();
+    if has_cover_page {
+        items.push_str(
+            "    <reference type=\"cover\" title=\"Cover\" href=\"Text/cover.xhtml\"/>\n",
+        );
+    }
+    items
+        .push_str("    <reference type=\"toc\" title=\"Table of Contents\" href=\"nav.xhtml\"/>\n");
+    if let Some(id) = first_chapter {
+        items.push_str(&format!(
+            "    <reference type=\"text\" title=\"Begin Reading\" href=\"Text/{}\"/>\n",
+            paths::chapter_file_name(id)
+        ));
+    }
+    items
 }
 
 /// manifest item id：按 assigned 键序编号（确定性）。
@@ -378,9 +417,19 @@ fn opf_href(zip_path: &str) -> String {
 // nav.xhtml
 // ---------------------------------------------------------------------------
 
-fn render_nav(book: &BookDraft) -> String {
+fn render_nav(book: &BookDraft, has_cover_page: bool) -> String {
     let mut list = String::new();
     render_nav_items(&book.toc, &mut list);
+    let landmarks = render_landmarks_items(has_cover_page, first_chapter_id(book));
+    // 条目为零时整块不产出（空 nav 无用）；有封面或章节才出 landmarks
+    let landmarks_block = if landmarks.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "  <nav epub:type=\"landmarks\" id=\"landmarks\" hidden=\"hidden\">\n    \
+             <h2>Landmarks</h2>\n    <ol>\n{landmarks}    </ol>\n  </nav>\n"
+        )
+    };
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
@@ -394,12 +443,32 @@ fn render_nav(book: &BookDraft) -> String {
     <ol>
 {list}    </ol>
   </nav>
-</body>
+{landmarks_block}</body>
 </html>
 "#,
         title = xml_escape(&book.meta.title),
         list = list,
+        landmarks_block = landmarks_block,
     )
+}
+
+/// landmarks nav 条目（hidden nav，nav 不进 spine——对 `#toc` 的片段
+/// 自引用被 epubcheck RSC-011 拒绝，故只列 cover 与首章）。标签为固定
+/// 英文串：结构导航由 epub:type 驱动，不承担 i18n。
+fn render_landmarks_items(has_cover_page: bool, first_chapter: Option<ChapterId>) -> String {
+    let mut items = String::new();
+    if has_cover_page {
+        items.push_str(
+            "      <li><a epub:type=\"cover\" href=\"Text/cover.xhtml\">Cover</a></li>\n",
+        );
+    }
+    if let Some(id) = first_chapter {
+        items.push_str(&format!(
+            "      <li><a epub:type=\"bodymatter\" href=\"{}\">Begin Reading</a></li>\n",
+            paths::chapter_href_from_nav(id)
+        ));
+    }
+    items
 }
 
 fn render_nav_items(items: &[TocItem], out: &mut String) {
@@ -734,5 +803,54 @@ mod tests {
         let len = buf.len();
         buf.truncate(len - 8); // 掐掉 EOCD 尾部，结构破损必须报错而非 panic
         assert!(normalize_zip_system_byte(&mut buf).is_err());
+    }
+
+    #[test]
+    fn landmarks_items_pin_cover_and_bodymatter_without_toc_selfref() {
+        let both = render_landmarks_items(true, Some(ChapterId(0)));
+        assert!(
+            both.contains("<a epub:type=\"cover\" href=\"Text/cover.xhtml\">Cover</a>"),
+            "{both}"
+        );
+        assert!(
+            both.contains(
+                "<a epub:type=\"bodymatter\" href=\"Text/ch00001.xhtml\">Begin Reading</a>"
+            ),
+            "{both}"
+        );
+        assert!(!both.contains("href=\"#toc\""), "toc 自引用禁入：{both}");
+
+        let no_cover = render_landmarks_items(false, Some(ChapterId(0)));
+        assert!(!no_cover.contains("cover\""), "{no_cover}");
+        assert!(no_cover.contains("bodymatter"), "{no_cover}");
+
+        // 无封面无章节 → 空条目（render_nav 据此整块省略）
+        assert_eq!(render_landmarks_items(false, None), "");
+    }
+
+    #[test]
+    fn guide_items_pin_three_references() {
+        let both = render_guide_items(true, Some(ChapterId(0)));
+        assert!(
+            both.contains("<reference type=\"cover\" title=\"Cover\" href=\"Text/cover.xhtml\"/>"),
+            "{both}"
+        );
+        assert!(
+            both.contains(
+                "<reference type=\"toc\" title=\"Table of Contents\" href=\"nav.xhtml\"/>"
+            ),
+            "{both}"
+        );
+        assert!(
+            both.contains(
+                "<reference type=\"text\" title=\"Begin Reading\" href=\"Text/ch00001.xhtml\"/>"
+            ),
+            "{both}"
+        );
+
+        let bare = render_guide_items(false, None);
+        assert!(bare.contains("type=\"toc\""), "toc 恒在：{bare}");
+        assert!(!bare.contains("type=\"cover\""), "{bare}");
+        assert!(!bare.contains("type=\"text\""), "{bare}");
     }
 }
